@@ -76,8 +76,18 @@ export class Gpu {
 
   initGL() {
     const gl = this.gl;
+    // Streaming vertex/index rings: draws append, the buffers are orphaned
+    // when full.
     this.vbo = gl.createBuffer();
     this.ibo = gl.createBuffer();
+    this.vtxRingSize = 65536 * 4;
+    this.idxRingSize = 65536 * 6 * 4;
+    this.vtxRingPos = 0;
+    this.idxRingPos = 0;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, this.vtxRingSize * VSTRIDE * 4, gl.STREAM_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.idxRingSize * 4, gl.STREAM_DRAW);
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -151,7 +161,14 @@ export class Gpu {
 
     this.samplers = [];
     this.samplerState = [];
-    for (let i = 0; i < 8; i++) { this.samplers.push(gl.createSampler()); this.samplerState.push(-1); }
+    this.samplerBound = [];
+    this.texBound = [];
+    for (let i = 0; i < 8; i++) {
+      this.samplers.push(gl.createSampler());
+      this.samplerState.push(-1);
+      this.samplerBound.push(null);
+      this.texBound.push(null);
+    }
 
     this.uboBuf = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.uboBuf);
@@ -664,20 +681,36 @@ export class Gpu {
     }
     const gl = this.gl;
     const shader = this.getProgram();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.efbFbo);
-    gl.useProgram(shader.prog);
+    if (this.curProgram !== shader.prog) {
+      gl.useProgram(shader.prog);
+      this.curProgram = shader.prog;
+    }
+    if (!this.efbBound) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.efbFbo);
+      gl.viewport(0, 0, this.efbW, this.efbH);
+      gl.bindVertexArray(this.vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+      this.efbBound = true;
+      this.rsKey = null;
+    }
     this.applyRenderState();
     this.setUniforms(shader);
     this.bindTextures(shader);
 
-    gl.bindVertexArray(this.vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, this.vtxData.subarray(0, this.vtxCount * VSTRIDE), gl.STREAM_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices.subarray(0, this.indexCount), gl.STREAM_DRAW);
+    if (this.vtxRingPos + this.vtxCount > this.vtxRingSize || this.idxRingPos + this.indexCount > this.idxRingSize) {
+      gl.bufferData(gl.ARRAY_BUFFER, this.vtxRingSize * VSTRIDE * 4, gl.STREAM_DRAW);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.idxRingSize * 4, gl.STREAM_DRAW);
+      this.vtxRingPos = 0;
+      this.idxRingPos = 0;
+    }
+    const base = this.vtxRingPos, idx = this.indices, n = this.indexCount;
+    if (base) for (let i = 0; i < n; i++) idx[i] += base;
+    gl.bufferSubData(gl.ARRAY_BUFFER, base * VSTRIDE * 4, this.vtxData, 0, this.vtxCount * VSTRIDE);
+    gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, this.idxRingPos * 4, idx, 0, n);
     const mode = this.batchPrim === PRIM_POINTS ? gl.POINTS : this.batchPrim >= PRIM_LINES ? gl.LINES : gl.TRIANGLES;
-    if (!this.noDraw) gl.drawElements(mode, this.indexCount, gl.UNSIGNED_INT, 0);
-    gl.bindVertexArray(null);
+    if (!this.noDraw) gl.drawElements(mode, n, gl.UNSIGNED_INT, this.idxRingPos * 4);
+    this.vtxRingPos += this.vtxCount;
+    this.idxRingPos += n;
     if (this.trace > 0) { this.trace--; this.traceDraw(); }
     this.stats.draws++;
     this.fstats.draws++;
@@ -712,10 +745,31 @@ export class Gpu {
   }
 
   // Render state that is not part of the shader.
+  // Leaves GL state for other users (copies, presentation): the next draw
+  // sets everything again.
+  releaseGL() {
+    this.efbBound = false;
+    this.curProgram = null;
+    this.rsKey = null;
+    for (let i = 0; i < 8; i++) this.samplerBound[i] = null;
+    this.gl.bindVertexArray(null);
+  }
+
   applyRenderState() {
-    const gl = this.gl, bp = this.bp, s = this.scale;
-    // viewport/scissor from XF viewport and BP scissor
-    gl.viewport(0, 0, this.efbW, this.efbH);
+    const gl = this.gl, bp = this.bp, s = this.scale, xr = this.xfReg;
+    const prim = this.batchPrim >= PRIM_LINES ? 1 : 0;
+    const k = this.rsCur || (this.rsCur = new Uint32Array(9));
+    k[0] = bp[0x20]; k[1] = bp[0x21]; k[2] = (bp[0x00] >> 14) & 3 | prim << 2; k[3] = bp[0x40];
+    k[4] = bp[0x41]; k[5] = bp[0x43] & 7; k[6] = xr[0x1C]; k[7] = xr[0x1F]; k[8] = 0;
+    const last = this.rsKey;
+    if (last) {
+      let same = true;
+      for (let i = 0; i < 9; i++) if (k[i] !== last[i]) { same = false; break; }
+      if (same) return;
+    } else {
+      this.rsKey = new Uint32Array(9);
+    }
+    this.rsKey.set(k);
     const tl = bp[0x20], br = bp[0x21];
     const y0 = (tl & 0x7FF) - 342, x0 = ((tl >> 12) & 0x7FF) - 342;
     const y1 = (br & 0x7FF) - 342 + 1, x1 = ((br >> 12) & 0x7FF) - 342 + 1;
@@ -793,8 +847,8 @@ export class Gpu {
   }
 
   viewportParams() {
-    const r = this.xfReg, f = this.xfMem;
-    const fl = (i) => { const u = new Uint32Array([r[i]]); return new Float32Array(u.buffer)[0]; };
+    const r = this.xfReg, f32 = this.f32tmp, u32 = this.u32tmp;
+    const fl = (i) => { u32[0] = r[i]; return f32[0]; };
     return {sx: fl(0x1A), sy: fl(0x1B), sz: fl(0x1C), ox: fl(0x1D), oy: fl(0x1E), oz: fl(0x1F)};
   }
 
@@ -952,9 +1006,13 @@ export class Gpu {
   bindTextures(shader) {
     const gl = this.gl;
     for (const i of shader.maps) {
-      gl.activeTexture(gl.TEXTURE0 + i);
       const t = this.getTexture(i);
-      gl.bindTexture(gl.TEXTURE_2D, t ? t.tex : this.dummyTex);
+      const tex = t ? t.tex : this.dummyTex;
+      if (this.texBound[i] !== tex) {
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        this.texBound[i] = tex;
+      }
       const mode0 = this.texReg(i, 0x80) & 0x7F;
       const key = mode0 | (t && t.mips ? 0x80 : 0);
       if (this.samplerState[i] !== key) {
@@ -969,9 +1027,11 @@ export class Gpu {
           gl.LINEAR, gl.LINEAR_MIPMAP_NEAREST, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR][min];
         gl.samplerParameteri(smp, gl.TEXTURE_MIN_FILTER, t && t.mips ? minf : (min >= 4 ? gl.LINEAR : gl.NEAREST));
       }
-      gl.bindSampler(i, this.samplers[i]);
+      if (this.samplerBound[i] !== this.samplers[i]) {
+        gl.bindSampler(i, this.samplers[i]);
+        this.samplerBound[i] = this.samplers[i];
+      }
     }
-    gl.activeTexture(gl.TEXTURE0);
   }
 
   getTexture(map) {
@@ -1001,6 +1061,7 @@ export class Gpu {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
+    this.texBound.fill(null);
     let size = 0, lw = w, lh = h, off = addr;
     const tlut = isPal ? this.tmem.subarray(tlutOff & 0xFFFFF) : null;
     for (let level = 0; level < mips; level++) {
@@ -1065,6 +1126,7 @@ export class Gpu {
     }
 
     if (clear) {
+      this.releaseGL();
       const ar = bp[0x4F], gb = bp[0x50];
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.efbFbo);
       gl.enable(gl.SCISSOR_TEST);
@@ -1082,6 +1144,8 @@ export class Gpu {
 
   copyToTexture(map, addr, x, y, w, h, tw, th, mode, fmt) {
     const gl = this.gl, s = this.scale;
+    this.releaseGL();
+    this.texBound.fill(null);
     this.fstats.copies++;
     this.fstats.copyPix += tw * th;
     let ent = map.get(addr);
@@ -1126,6 +1190,9 @@ export class Gpu {
 
   present(xfb, width, height, black) {
     const gl = this.gl;
+    this.flushIfNeeded();
+    this.releaseGL();
+    this.texBound.fill(null);
     if (this.debugShaders) {
       const f = this.fstats;
       if (f.tex > 4 || f.copies > 3 || f.draws > 400) console.log('FRAME ' + JSON.stringify(f));
