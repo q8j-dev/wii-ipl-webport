@@ -29,6 +29,10 @@
 
 #include <nw4r/ut/ArchiveFont.h>
 
+#ifdef RVL_WEB
+extern "C" int __web_nand_exists(const char* path);
+#endif
+
 #include "SoftKeyboard.h"
 
 #include <revolution/vf.h>
@@ -245,6 +249,14 @@ namespace ipl {
         workData = new (getMem2Sys(), -DEFAULT_ALIGN) u8[NWC24_LIB_WORK_SIZE];
 
         // Init NWC24
+#ifdef RVL_WEB
+        // A console leaves the factory with the WiiConnect24 files in place;
+        // a NAND made by the web port's importer has none, which the check
+        // below would report as corrupted message board data.
+        if (!__web_nand_exists("/shared2/wc24/nwc24msg.cfg")) {
+            NWC24InitFiles(workData, TRUE);
+        } else
+#endif
         if (!SCGetConfigDoneFlag() && !SCGetConfigDoneFlag2()) {
             NWC24InitFiles(workData, TRUE);
         } else {

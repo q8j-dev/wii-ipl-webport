@@ -88,14 +88,17 @@ needed only for clang, applied to copies at build time.
   thread), interrupts are delivered at interrupt points, alarms and the video
   retrace run on wall-clock time;
 - IOS: `/dev/fs` on a virtual NAND (`js/nand.js`), `/dev/es` titles and
-  contents, `/dev/di` without a disc, network configuration, STM;
+  contents, `/dev/di` without a disc, network configuration, the
+  WiiConnect24 daemon without a network (the console gets a user ID, so
+  memos post to the message board), STM;
 - GX: the command FIFO is executed by a GPU emulator in JavaScript (`js/gpu.js`:
   CP/XF/BP registers, vertex loader, generated GLSL for transform, lighting,
   texgen and the TEV combiners, texture decoding, EFB copies);
 - audio: the DSP's AX microcode command lists are executed in C (`hal/ax_web.c`:
   ADPCM/PCM voices, resampling, envelopes, main and aux buses) and the output is
   streamed to an AudioWorklet;
-- input: KPAD/WPAD from the mouse, keyboard and gamepads;
+- input: KPAD/WPAD from the mouse, keyboard and gamepads; the SDK's KPR
+  character processing (dead keys, romaji) for the software keyboard;
 - Wii Settings: the menu renders these HTML pages with Opera, an RSO module of
   PowerPC code. Here the browser does it (`hal/www_web.c`, `js/www.js`): pages
   load through the menu's own archive protocol into a hidden iframe, their

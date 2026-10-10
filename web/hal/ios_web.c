@@ -37,6 +37,7 @@ enum {
     KIND_STM_IMMEDIATE,
     KIND_STM_EVENT,
     KIND_NCD,
+    KIND_KD,
     KIND_STUB,
 };
 
@@ -80,6 +81,8 @@ static void parent_of(const char* path, char* out) {
 
 // ---------------------------------------------------------------------------
 // /dev/fs
+
+int __web_nand_exists(const char* path) { return fs_exists(path); }
 
 static s32 fs_create(const char* path, int dir) {
     if (path[0] != '/')
@@ -581,6 +584,146 @@ static s32 ncd_ioctlv(s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
 }
 
 // ---------------------------------------------------------------------------
+// /dev/net/kd/request and /dev/net/kd/time: the WiiConnect24 daemon. There
+// is no network, so mail is never sent or fetched, but the scheduler
+// requests succeed and the console gets a WiiConnect24 user ID (memos are
+// addressed to it). The NWC24 library itself keeps the mail boxes.
+
+#define WC24_CONFIG_PATH "/shared2/wc24/nwc24msg.cfg"
+#define WC24_CONFIG_BACKUP_PATH "/shared2/wc24/nwc24msg.cbk"
+#define WC24_CONFIG_SIZE 0x400
+
+enum {
+    WC24_OK = 0,
+    WC24_ERR_FAILED = -2,
+    WC24_ERR_NETWORK = -31,
+    WC24_ERR_ID_GENERATED = -35,
+    WC24_ERR_ID_REGISTERED = -36,
+};
+
+static u8 u64_byte(u64 v, int i) { return (u8)(v >> (i * 8)); }
+static u64 u64_set_byte(u64 v, int i, u8 b) { return (v & ~((u64)0xFF << (i * 8))) | ((u64)b << (i * 8)); }
+
+// The user ID: console ID, counter, model and region scrambled around a CRC
+// that the NWC24 library verifies.
+static u64 wc24_make_user_id(u32 consoleId, u16 counter, u8 model, u8 area) {
+    static const u8 kTable1[16] = {0x4, 0xB, 0x7, 0x9, 0xF, 0x1, 0xD, 0x3, 0xC, 0x2, 0x6, 0xE, 0x8, 0x0, 0xA, 0x5};
+    static const u8 kTable2[8] = {0x1, 0x5, 0x0, 0x4, 0x2, 0x3, 0x6, 0x7};
+    u64 id = ((u64)area << 50) | ((u64)model << 47) | ((u64)consoleId << 15) | ((u64)counter << 10);
+    u64 plain = id;
+    for (int i = 0; i <= 42; i++)
+        if ((id >> (52 - i)) & 1)
+            id ^= (u64)0x635 << (42 - i);
+    id = (plain | (id & 0xFFFFFFFF)) ^ 0x0000B3B3B3B3B3B3ULL;
+    id = (id >> 10) | ((id & 0x3FF) << (11 + 32));
+    for (int i = 0; i <= 5; i++) {
+        u8 b = u64_byte(id, i);
+        id = u64_set_byte(id, i, (u8)((kTable1[b >> 4] << 4) | kTable1[b & 0xF]));
+    }
+    u64 shuffled = id;
+    for (int i = 0; i <= 5; i++)
+        id = u64_set_byte(id, kTable2[i], u64_byte(shuffled, i));
+    id &= 0x001FFFFFFFFFFFFFULL;
+    id = (id << 1) | ((id >> 52) & 1);
+    id ^= 0x00005E5E5E5E5E5EULL;
+    id &= 0x001FFFFFFFFFFFFFULL;
+    return id;
+}
+
+static u32 rd32(const u8* p) { return ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | p[3]; }
+static void wr32(u8* p, u32 v) {
+    p[0] = (u8)(v >> 24);
+    p[1] = (u8)(v >> 16);
+    p[2] = (u8)(v >> 8);
+    p[3] = (u8)v;
+}
+
+// Returns the creation stage (0 none, 1 generated, 2 registered) and the ID,
+// generating one first if the configuration has none.
+static s32 kd_user_id(u64* outId, u32* outStage) {
+    static u8 cfg[WC24_CONFIG_SIZE];
+    u32 t, size;
+    if (fs_stat(WC24_CONFIG_PATH, &t, &size) != 0 || size < WC24_CONFIG_SIZE ||
+        webjs_fs_read(WC24_CONFIG_PATH, 0, cfg, WC24_CONFIG_SIZE) != WC24_CONFIG_SIZE || rd32(cfg) != 0x57634366) {
+        *outId = 0;
+        *outStage = 0;
+        return WC24_ERR_FAILED;
+    }
+    u32 stage = rd32(cfg + 0x14);
+    s32 result = stage == 2 ? WC24_ERR_ID_REGISTERED : WC24_ERR_ID_GENERATED;
+    if (stage == 0) {
+        u32 counter = rd32(cfg + 0x10);
+        u64 id = wc24_make_user_id(0x0403AC68, (u16)counter, 1 /* RVL */, 1 /* USA */);
+        wr32(cfg + 0x08, (u32)(id >> 32));
+        wr32(cfg + 0x0C, (u32)id);
+        wr32(cfg + 0x10, counter + 1);
+        wr32(cfg + 0x14, stage = 1);
+        u32 sum = 0;
+        for (u32 i = 0; i < WC24_CONFIG_SIZE - 4; i += 4)
+            sum += rd32(cfg + i);
+        wr32(cfg + WC24_CONFIG_SIZE - 4, sum);
+        webjs_fs_write(WC24_CONFIG_PATH, 0, cfg, WC24_CONFIG_SIZE, 1);
+        if (!fs_exists(WC24_CONFIG_BACKUP_PATH))
+            fs_create(WC24_CONFIG_BACKUP_PATH, 0);
+        webjs_fs_write(WC24_CONFIG_BACKUP_PATH, 0, cfg, WC24_CONFIG_SIZE, 1);
+        result = WC24_OK;
+    }
+    *outId = ((u64)rd32(cfg + 0x08) << 32) | rd32(cfg + 0x0C);
+    *outStage = stage;
+    return result;
+}
+
+static s32 kd_ioctl(IosFd* f, s32 cmd, u8* in, u32 inLen, u8* out, u32 outLen) {
+    if (out && outLen)
+        memset(out, 0, outLen);
+    s32 result = WC24_OK;
+    if (strcmp(f->path, "/dev/net/kd/time") == 0) {
+        // 23 SET_RTC_COUNTER, 24 GET_TIME_DIFFERENCE (zero: the clock is right)
+    } else {
+        switch (cmd) {
+            case 1:   // SUSPEND_SCHEDULER
+            case 2:   // TRY_SUSPEND_SCHEDULER
+            case 3:   // RESUME_SCHEDULER
+            case 8:   // LOCK_SOCKET
+            case 9:   // UNLOCK_SOCKET
+            case 13:  // SAVE_MAIL_NOW
+            case 30:  // GET_SCHEDULER_STAT
+            case 34:  // SET_SCRIPT_MODE
+            case 40:  // SHUTDOWN
+                break;
+            case 6:   // STARTUP_SOCKET
+            case 7:   // CLEANUP_SOCKET
+            case 10:  // CHECK_MAIL_NOW
+            case 11:  // SEND_MAIL_NOW
+            case 12:  // RECEIVE_MAIL_NOW
+            case 14:  // DOWNLOAD_NOW_EX
+                result = WC24_ERR_NETWORK;
+                break;
+            case 15: {  // REQUEST_GENERATED_USER_ID: [result, id (u64), stage]
+                u64 id;
+                u32 stage;
+                result = kd_user_id(&id, &stage);
+                if (out && outLen >= 16) {
+                    wr32(out + 4, (u32)(id >> 32));
+                    wr32(out + 8, (u32)id);
+                    wr32(out + 12, stage);
+                }
+                break;
+            }
+            case 16:  // REQUEST_REGISTER_USER_ID: needs the server
+                result = WC24_ERR_NETWORK;
+                break;
+            default:
+                __web_report("[ios] kd ioctl %d (stubbed)", cmd);
+                break;
+        }
+    }
+    if (out && outLen >= 4)
+        wr32(out, (u32)result);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Request dispatch
 
 static int device_kind(const char* path) {
@@ -596,6 +739,8 @@ static int device_kind(const char* path) {
         return KIND_STM_EVENT;
     if (strcmp(path, "/dev/net/ncd/manage") == 0)
         return KIND_NCD;
+    if (strcmp(path, "/dev/net/kd/request") == 0 || strcmp(path, "/dev/net/kd/time") == 0)
+        return KIND_KD;
     return KIND_STUB;
 }
 
@@ -699,6 +844,8 @@ static s32 do_ioctl(s32 fd, s32 cmd, void* in, u32 inLen, void* out, u32 outLen)
             return __web_di_ioctl(cmd, (u8*)in, inLen, (u8*)out, outLen);
         case KIND_STM_IMMEDIATE:
             return stm_ioctl(f, cmd, (u8*)in, inLen, (u8*)out, outLen);
+        case KIND_KD:
+            return kd_ioctl(f, cmd, (u8*)in, inLen, (u8*)out, outLen);
         default:
             __web_report("[ios] ioctl %d on %s (stubbed)", cmd, f->path);
             if (out && outLen)
