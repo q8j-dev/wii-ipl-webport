@@ -168,6 +168,7 @@ export class Www {
       if (this.loading && this.frame && this.frame.serial >= this.loadSerial) {
         this.writeRaster();
         this.loading = false;
+        if (this.debug) console.log('www loaded ' + this.page);
         this.notify(EVT_LOADING_FINISHED, this.eventData);
       } else if (!this.loading && this.dirty && !this.rasterizing) {
         this.rasterize();
@@ -185,6 +186,10 @@ export class Www {
   }
 
   mouse(cmd, x, y, button) {
+    if (this.debug && (cmd !== MOUSE_MOVE || performance.now() - (this.lastMoveLog || 0) > 1000)) {
+      this.lastMoveLog = performance.now();
+      console.log(`www mouse ${cmd} ${x},${y} loading=${this.loading}`);
+    }
     const doc = this.doc();
     if (!doc || this.loading) return;
     try {
@@ -234,7 +239,15 @@ export class Www {
     const href = a.getAttribute('href');
     if (/^javascript:/i.test(href)) {
       this.eval(decodeURIComponent(href.slice(11)));
-    } else if (href && !href.startsWith('#')) {
+    } else if (href && href.startsWith('#')) {
+      // Opera reports a fragment navigation like a page load (the menu
+      // re-enables input after the page "changes").
+      this.notify(EVT_URL_CHANGE, this.eventData);
+      this.notify(EVT_LOADING_START, this.eventData);
+      this.loading = true;
+      this.loadSerial = this.frameSerial + 1;
+      this.rasterize();
+    } else if (href) {
       this.pendingUrl = this.resolve(href, this.page);
       this.runSlice();
     }
@@ -353,6 +366,7 @@ export class Www {
   }
 
   load(path) {
+    if (this.debug) console.log('www load ' + path);
     this.notify(EVT_URL_CHANGE, this.eventData);
     this.notify(EVT_LOADING_START, this.eventData);
     this.page = path;

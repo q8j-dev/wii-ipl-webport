@@ -152,6 +152,7 @@ async function boot() {
   gpu.noDraw = params.has('nodraw');
   audio.debug = params.has('heartbeat');
   gpu.debugShaders = params.has('heartbeat');
+  www.debug = params.has('heartbeat');
   window.wii.audio = audio;
   if (params.has('heartbeat')) {
     setInterval(() => console.log(`heartbeat waits=${wii.waits} frames=${gpu.frameCount} draws=${gpu.stats.draws} audio=${JSON.stringify(audio.stats)} ctx=${audio.ctx && audio.ctx.state}`), 1000);

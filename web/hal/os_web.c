@@ -231,6 +231,24 @@ void __web_poll(int idle) {
 
 void __web_idle(void) { __web_poll(1); }
 
+// A thread blocked inside a JavaScript callback (see SelectThread): take
+// interrupts until it is woken up.
+void __web_nested_wait(OSThread* thread) {
+    double start = webjs_now();
+    while (thread->state == OS_THREAD_STATE_WAITING) {
+        if (!sInPoll) {
+            sInPoll = 1;
+            int enabled = sIrqEnabled;
+            sIrqEnabled = 0;
+            deliver(0);
+            sIrqEnabled = enabled;
+            sInPoll = 0;
+        }
+        if (webjs_now() - start > 10000.0)
+            __web_fatal("thread blocked inside a JavaScript callback");
+    }
+}
+
 BOOL OSDisableInterrupts(void) {
     BOOL prev = sIrqEnabled;
     sIrqEnabled = 0;

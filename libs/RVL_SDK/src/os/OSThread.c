@@ -80,6 +80,8 @@
 void __web_thread_create(OSThread* thread, void* (*func)(void*), void* param, void* stack, u32 stackSize);
 void __web_switch_thread(OSThread* to);
 void __web_idle(void);
+extern int __web_nested_js;
+void __web_nested_wait(OSThread* thread);
 #endif
 
 /* Run queue */
@@ -344,6 +346,23 @@ OSThread* SelectThread(BOOL yield) {
 
     OSPriority priority;
     OSThreadQueue* queue;
+
+#ifdef RVL_WEB
+    // Inside a JavaScript callback (web/hal/www_web.c) no other thread can
+    // run: a thread that blocks waits in place, taking interrupts, until it
+    // is woken up, and then keeps running.
+    if (__web_nested_js) {
+        currentThread = OSGetCurrentThread();
+        if (currentThread && currentThread->state == OS_THREAD_STATE_WAITING) {
+            __web_nested_wait(currentThread);
+            if (currentThread->state == OS_THREAD_STATE_READY) {
+                UnsetRun(currentThread);
+                currentThread->state = OS_THREAD_STATE_RUNNING;
+            }
+        }
+        return NULL;
+    }
+#endif
 
     if (Reschedule > 0) {
         return NULL;

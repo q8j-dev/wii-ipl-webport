@@ -862,6 +862,38 @@ struct BEFixPass : PassInfoMixin<BEFixPass> {
         return Constant::getNullValue(T);
     }
 
+    // Clang emits the deleting destructor (D0) of a class it considers
+    // abstract as a trap. The decompiled sources declare some classes
+    // differently in different files (MWCC did not mind), so such a class can
+    // be instantiated and deleted: give it the real body, destroy + delete.
+    void fixAbstractDeletingDtors(Module& M) {
+        Function* del = M.getFunction("_ZdlPv");
+        for (Function& F : M) {
+            StringRef n = F.getName();
+            if (F.isDeclaration() || !n.ends_with("D0Ev") || F.arg_size() != 1)
+                continue;
+            Instruction& first = F.getEntryBlock().front();
+            auto* call = dyn_cast<CallInst>(&first);
+            if (!call || !call->getCalledFunction() || call->getCalledFunction()->getIntrinsicID() != Intrinsic::trap)
+                continue;
+            std::string base = n.drop_back(4).str();
+            Function* dtor = M.getFunction(base + "D1Ev");
+            if (!dtor || dtor->isDeclaration())
+                dtor = M.getFunction(base + "D2Ev");
+            if (!dtor || dtor->isDeclaration() || !del) {
+                errs() << "befix: cannot fix trapping deleting destructor " << n << "\n";
+                continue;
+            }
+            F.deleteBody();
+            BasicBlock* BB = BasicBlock::Create(F.getContext(), "entry", &F);
+            IRBuilder<> B(BB);
+            B.CreateCall(dtor->getFunctionType(), dtor, {F.getArg(0)});
+            B.CreateCall(del->getFunctionType(), del, {F.getArg(0)});
+            B.CreateRetVoid();
+            errs() << "befix: deleting destructor " << n << " rebuilt\n";
+        }
+    }
+
     // Complete-object and base-object constructors/destructors are equivalent
     // without virtual bases, so a missing variant aliases the existing one.
     // Explicit aliases (MWCC-mangled names used through extern "C") come from
@@ -970,6 +1002,7 @@ struct BEFixPass : PassInfoMixin<BEFixPass> {
 
     PreservedAnalyses run(Module& M, ModuleAnalysisManager&) {
         resolveAliases(M);
+        fixAbstractDeletingDtors(M);
         std::vector<CallBase*> work;
         for (Function& F : M)
             for (Instruction& I : instructions(F))
