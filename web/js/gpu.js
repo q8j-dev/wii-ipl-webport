@@ -13,7 +13,8 @@
 // too, so later draws that sample that address use them.
 
 import {TF, decodeTexture, textureSize} from './gx_texture.js';
-import {buildShaders} from './gx_shader.js';
+import {buildShaders, UBO_POSTEX, UBO_NRM, UBO_POST, UBO_LCOLOR, UBO_LPOS, UBO_LDIR, UBO_LCOS, UBO_LDIST, UBO_PROJ,
+  UBO_PROJ2, UBO_VIEWPORT, UBO_EFBSIZE, UBO_CHANMAT, UBO_CHANAMB, UBO_TEVREG, UBO_KONST, UBO_ALPHAREF, UBO_SIZE} from './gx_shader.js';
 
 const PRIM_QUADS = 0, PRIM_QUADS2 = 1, PRIM_TRIS = 2, PRIM_TRISTRIP = 3, PRIM_TRIFAN = 4,
   PRIM_LINES = 5, PRIM_LINESTRIP = 6, PRIM_POINTS = 7;
@@ -43,8 +44,12 @@ export class Gpu {
     this.xfReg = new Uint32Array(0x100);     // 0x1000..0x10FF
     this.bpMask = 0xFFFFFF;
     this.tmem = new Uint8Array(0x100000);     // texture memory (TLUTs)
-    this.tevRegs = new Float32Array(16);
-    this.tevKonst = new Float32Array(16);
+    // Uniform block mirror (see gx_shader.js); [uboLo, uboHi) is dirty.
+    this.ubo = new Float32Array(UBO_SIZE);
+    this.uboLo = 0;
+    this.uboHi = UBO_SIZE;
+    this.f32tmp = new Float32Array(1);
+    this.u32tmp = new Uint32Array(this.f32tmp.buffer);
 
     this.vtxData = new Float32Array(VSTRIDE * 65536);
     this.vtxCount = 0;
@@ -144,7 +149,13 @@ export class Gpu {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
 
     this.samplers = [];
-    for (let i = 0; i < 8; i++) this.samplers.push(gl.createSampler());
+    this.samplerState = [];
+    for (let i = 0; i < 8; i++) { this.samplers.push(gl.createSampler()); this.samplerState.push(-1); }
+
+    this.uboBuf = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.uboBuf);
+    gl.bufferData(gl.UNIFORM_BUFFER, UBO_SIZE * 4, gl.DYNAMIC_DRAW);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.uboBuf);
   }
 
   makeProgram(vs, fs) {
@@ -262,6 +273,7 @@ export class Gpu {
         if (this.xfMemU[a] !== raw) {
           this.flushIfNeeded();
           this.xfMemU[a] = raw;
+          this.xfToUbo(a);
         }
       } else if (a < 0x1100) {
         const r = a - 0x1000;
@@ -270,6 +282,37 @@ export class Gpu {
           this.xfReg[r] = raw;
         }
       }
+    }
+  }
+
+  setU(i, v) {
+    if (this.ubo[i] !== v) {
+      this.ubo[i] = v;
+      if (i < this.uboLo) this.uboLo = i;
+      if (i >= this.uboHi) this.uboHi = i + 1;
+    }
+  }
+
+  // Mirrors XF memory word `a` into the uniform block.
+  xfToUbo(a) {
+    const f = this.xfMem[a];
+    if (a < 0x100) this.setU(UBO_POSTEX + a, f);
+    else if (a >= 0x400 && a < 0x460) {
+      const r = ((a - 0x400) / 3) | 0;
+      this.setU(UBO_NRM + r * 4 + (a - 0x400 - r * 3), f);
+    } else if (a >= 0x500 && a < 0x600) this.setU(UBO_POST + a - 0x500, f);
+    else if (a >= 0x600 && a < 0x680) {
+      const l = (a - 0x600) >> 4, w = (a - 0x600) & 15;
+      if (w === 3) {
+        const c = this.xfMemU[a];
+        this.setU(UBO_LCOLOR + l * 4, ((c >>> 24) & 255) / 255);
+        this.setU(UBO_LCOLOR + l * 4 + 1, ((c >>> 16) & 255) / 255);
+        this.setU(UBO_LCOLOR + l * 4 + 2, ((c >>> 8) & 255) / 255);
+        this.setU(UBO_LCOLOR + l * 4 + 3, (c & 255) / 255);
+      } else if (w >= 4 && w < 7) this.setU(UBO_LCOS + l * 4 + w - 4, f);
+      else if (w >= 7 && w < 10) this.setU(UBO_LDIST + l * 4 + w - 7, f);
+      else if (w >= 10 && w < 13) this.setU(UBO_LPOS + l * 4 + w - 10, f);
+      else if (w >= 13) this.setU(UBO_LDIR + l * 4 + w - 13, f);
     }
   }
 
@@ -632,7 +675,7 @@ export class Gpu {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices.subarray(0, this.indexCount), gl.STREAM_DRAW);
     const mode = this.batchPrim === PRIM_POINTS ? gl.POINTS : this.batchPrim >= PRIM_LINES ? gl.LINES : gl.TRIANGLES;
-    gl.drawElements(mode, this.indexCount, gl.UNSIGNED_INT, 0);
+    if (!this.noDraw) gl.drawElements(mode, this.indexCount, gl.UNSIGNED_INT, 0);
     gl.bindVertexArray(null);
     if (this.trace > 0) { this.trace--; this.traceDraw(); }
     this.stats.draws++;
@@ -755,22 +798,54 @@ export class Gpu {
 
   // ---------------------------------------------------------- shaders
 
+  // Registers that select the generated shader (see shaderConfig).
+  shaderRegs(out) {
+    const bp = this.bp, xr = this.xfReg;
+    let n = 0;
+    const numTev = ((bp[0x00] >> 10) & 15) + 1;
+    out[n++] = bp[0x00] & 0x7FFFF;  // gen mode
+    for (let i = 0; i < 8; i++) out[n++] = bp[0x28 + i];
+    for (let i = 0; i < numTev * 2; i++) out[n++] = bp[0xC0 + i] & 0xFFFFFF;
+    for (let i = numTev * 2; i < 32; i++) out[n++] = 0;
+    for (let i = 0; i < 8; i++) out[n++] = bp[0xF6 + i];
+    for (let i = 0; i < 16; i++) out[n++] = bp[0x10 + i] & 0x1FFFFF;
+    out[n++] = bp[0x27];
+    out[n++] = (bp[0xF3] >>> 16) & 0xFF;
+    out[n++] = (bp[0xF2] >> 21) & 7;
+    out[n++] = bp[0x43] & 7;
+    out[n++] = xr[0x3F]; out[n++] = xr[0x09]; out[n++] = xr[0x12]; out[n++] = xr[0x26] & 1;
+    for (let i = 0; i < 4; i++) out[n++] = xr[0x0E + i];
+    for (let i = 0; i < 8; i++) { out[n++] = xr[0x40 + i]; out[n++] = xr[0x50 + i]; }
+    return n;
+  }
+
   getProgram() {
-    const key = this.shaderKey();
+    if (!this.keyA) { this.keyA = new Int32Array(128); this.keyB = new Int32Array(128); }
+    const n = this.shaderRegs(this.keyA);
+    if (this.lastShader) {
+      let same = true;
+      for (let i = 0; i < n; i++) if (this.keyA[i] !== this.keyB[i]) { same = false; break; }
+      if (same) return this.lastShader;
+    }
+    const key = Array.prototype.join.call(this.keyA.subarray(0, n), ',');
+    [this.keyA, this.keyB] = [this.keyB, this.keyA];
     let s = this.programs.get(key);
     if (!s) {
       const src = buildShaders(this.shaderConfig());
       const prog = this.makeProgram(src.vs, src.fs);
       s = {prog, uni: {}};
       const gl = this.gl;
-      const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
-      for (let i = 0; i < n; i++) {
-        const info = gl.getActiveUniform(prog, i);
-        const name = info.name.replace(/\[0\]$/, '');
-        s.uni[name] = gl.getUniformLocation(prog, info.name);
+      const bi = gl.getUniformBlockIndex(prog, 'Gx');
+      if (bi !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog, bi, 0);
+      gl.useProgram(prog);
+      s.maps = [];
+      for (let i = 0; i < 8; i++) {
+        const loc = gl.getUniformLocation(prog, 'uTex' + i);
+        if (loc) { gl.uniform1i(loc, i); s.maps.push(i); }
       }
       this.programs.set(key, s);
     }
+    this.lastShader = s;
     return s;
   }
 
@@ -813,74 +888,30 @@ export class Gpu {
     };
   }
 
-  shaderKey() {
-    const c = this.shaderConfig();
-    return JSON.stringify(c);
-  }
-
+  // Per-draw state into the uniform block, then upload what changed.
   setUniforms(shader) {
-    const gl = this.gl, u = shader.uni;
-    if (u.uPosTex) gl.uniform4fv(u.uPosTex, this.xfMem.subarray(0, 256));
-    if (u.uNrm) gl.uniform3fv(u.uNrm, this.xfMem.subarray(0x400, 0x460));
-    if (u.uPost) gl.uniform4fv(u.uPost, this.xfMem.subarray(0x500, 0x600));
-    const r = this.xfReg;
-    const fl = (i) => { const t = new Uint32Array([r[i]]); return new Float32Array(t.buffer)[0]; };
-    if (u.uProj) gl.uniform4f(u.uProj, fl(0x20), fl(0x21), fl(0x22), fl(0x23));
-    if (u.uProj2) gl.uniform2f(u.uProj2, fl(0x24), fl(0x25));
-    const vp = this.viewportParams();
-    if (u.uViewport) gl.uniform4f(u.uViewport, vp.sx, vp.sy, vp.ox - 342, vp.oy - 342);
-    if (u.uEfbSize) gl.uniform2f(u.uEfbSize, EFB_W, EFB_H);
-    const col = (v) => [((v >>> 24) & 255) / 255, ((v >>> 16) & 255) / 255, ((v >>> 8) & 255) / 255, (v & 255) / 255];
-    if (u.uChanMat) gl.uniform4fv(u.uChanMat, [...col(r[0x0C]), ...col(r[0x0D])]);
-    if (u.uChanAmb) gl.uniform4fv(u.uChanAmb, [...col(r[0x0A]), ...col(r[0x0B])]);
-    if (u.uLightColor) {
-      const lc = [], lp = [], ld = [], la = [], lk = [];
-      const m = this.xfMem, mu = this.xfMemU;
-      for (let l = 0; l < 8; l++) {
-        const b = 0x600 + l * 16;
-        lc.push(...col(mu[b + 3]));
-        la.push(m[b + 4], m[b + 5], m[b + 6]);
-        lk.push(m[b + 7], m[b + 8], m[b + 9]);
-        lp.push(m[b + 10], m[b + 11], m[b + 12]);
-        ld.push(m[b + 13], m[b + 14], m[b + 15]);
-      }
-      gl.uniform4fv(u.uLightColor, lc);
-      if (u.uLightPos) gl.uniform3fv(u.uLightPos, lp);
-      if (u.uLightDir) gl.uniform3fv(u.uLightDir, ld);
-      if (u.uLightCos) gl.uniform3fv(u.uLightCos, la);
-      if (u.uLightDist) gl.uniform3fv(u.uLightDist, lk);
+    const gl = this.gl, r = this.xfReg, f = this.f32tmp, u = this.u32tmp;
+    const fl = (i) => { u[0] = r[i]; return f[0]; };
+    this.setU(UBO_PROJ, fl(0x20)); this.setU(UBO_PROJ + 1, fl(0x21));
+    this.setU(UBO_PROJ + 2, fl(0x22)); this.setU(UBO_PROJ + 3, fl(0x23));
+    this.setU(UBO_PROJ2, fl(0x24)); this.setU(UBO_PROJ2 + 1, fl(0x25));
+    this.setU(UBO_VIEWPORT, fl(0x1A)); this.setU(UBO_VIEWPORT + 1, fl(0x1B));
+    this.setU(UBO_VIEWPORT + 2, fl(0x1D) - 342); this.setU(UBO_VIEWPORT + 3, fl(0x1E) - 342);
+    this.setU(UBO_EFBSIZE, EFB_W); this.setU(UBO_EFBSIZE + 1, EFB_H);
+    const col = (o, v) => {
+      this.setU(o, ((v >>> 24) & 255) / 255); this.setU(o + 1, ((v >>> 16) & 255) / 255);
+      this.setU(o + 2, ((v >>> 8) & 255) / 255); this.setU(o + 3, (v & 255) / 255);
+    };
+    col(UBO_CHANMAT, r[0x0C]); col(UBO_CHANMAT + 4, r[0x0D]);
+    col(UBO_CHANAMB, r[0x0A]); col(UBO_CHANAMB + 4, r[0x0B]);
+    const af = this.bp[0xF3];
+    this.setU(UBO_ALPHAREF, (af & 255) / 255); this.setU(UBO_ALPHAREF + 1, ((af >> 8) & 255) / 255);
+    if (this.uboHi > this.uboLo) {
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.uboBuf);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, this.uboLo * 4, this.ubo, this.uboLo, this.uboHi - this.uboLo);
+      this.uboLo = UBO_SIZE;
+      this.uboHi = 0;
     }
-    // TEV registers
-    const bp = this.bp;
-    const s11 = (v) => ((v & 0x7FF) << 21 >> 21) / 255;
-    if (u.uTevReg) gl.uniform4fv(u.uTevReg, this.tevRegs);
-    if (u.uKonst) gl.uniform4fv(u.uKonst, this.tevKonst);
-    const af = bp[0xF3];
-    if (u.uAlphaRef) gl.uniform2f(u.uAlphaRef, (af & 255) / 255, ((af >> 8) & 255) / 255);
-    // texture sizes for texcoord normalization
-    const sizes = [];
-    for (let i = 0; i < 8; i++) {
-      const img0 = this.texReg(i, 0x88);
-      sizes.push((img0 & 0x3FF) + 1, ((img0 >> 10) & 0x3FF) + 1);
-    }
-    if (u.uTexSize) gl.uniform2fv(u.uTexSize, sizes);
-    // indirect
-    const indMtx = [];
-    for (let i = 0; i < 3; i++) {
-      const a = bp[0x06 + i * 3], b = bp[0x07 + i * 3], c = bp[0x08 + i * 3];
-      const s11m = (v) => ((v & 0x7FF) << 21 >> 21) / 1024;
-      const sc = ((a >> 22) & 3) | (((b >> 22) & 3) << 2) | (((c >> 22) & 1) << 4);
-      const scale = Math.pow(2, sc - 17);
-      indMtx.push(s11m(a) * 1024 * scale, s11m(b) * 1024 * scale, s11m(c) * 1024 * scale, 0,
-        s11m(a >> 11) * 1024 * scale, s11m(b >> 11) * 1024 * scale, s11m(c >> 11) * 1024 * scale, 0);
-    }
-    if (u.uIndMtx) gl.uniform4fv(u.uIndMtx, indMtx);
-    const indScale = [];
-    for (let i = 0; i < 4; i++) {
-      const reg = bp[0x25 + (i >> 1)] >> ((i & 1) * 8);
-      indScale.push(1 / (1 << (reg & 15)), 1 / (1 << ((reg >> 4) & 15)));
-    }
-    if (u.uIndScale) gl.uniform2fv(u.uIndScale, indScale);
   }
 
   // TEV color registers / konstants: BP 0xE0-0xE7 hold R,A (even) and B,G
@@ -888,13 +919,13 @@ export class Gpu {
   writeTevReg(reg, val) {
     const i = (reg - 0xE0) >> 1;
     const s11 = (v) => ((v & 0x7FF) << 21 >> 21) / 255;
-    const dst = (val >> 23) & 1 ? this.tevKonst : this.tevRegs;
+    const base = ((val >> 23) & 1 ? UBO_KONST : UBO_TEVREG) + i * 4;
     if (reg & 1) {
-      dst[i * 4 + 2] = s11(val);
-      dst[i * 4 + 1] = s11(val >> 12);
+      this.setU(base + 2, s11(val));
+      this.setU(base + 1, s11(val >> 12));
     } else {
-      dst[i * 4 + 0] = s11(val);
-      dst[i * 4 + 3] = s11(val >> 12);
+      this.setU(base, s11(val));
+      this.setU(base + 3, s11(val >> 12));
     }
   }
 
@@ -906,24 +937,25 @@ export class Gpu {
 
   bindTextures(shader) {
     const gl = this.gl;
-    for (let i = 0; i < 8; i++) {
-      const uname = 'uTex' + i;
-      if (!shader.uni[uname]) continue;
+    for (const i of shader.maps) {
       gl.activeTexture(gl.TEXTURE0 + i);
       const t = this.getTexture(i);
       gl.bindTexture(gl.TEXTURE_2D, t ? t.tex : this.dummyTex);
-      gl.uniform1i(shader.uni[uname], i);
-      const mode0 = this.texReg(i, 0x80);
-      const wrap = (w) => w === 0 ? gl.CLAMP_TO_EDGE : w === 1 ? gl.REPEAT : gl.MIRRORED_REPEAT;
-      const smp = this.samplers[i];
-      gl.samplerParameteri(smp, gl.TEXTURE_WRAP_S, wrap(mode0 & 3));
-      gl.samplerParameteri(smp, gl.TEXTURE_WRAP_T, wrap((mode0 >> 2) & 3));
-      const mag = (mode0 >> 4) & 1, min = (mode0 >> 5) & 7;
-      gl.samplerParameteri(smp, gl.TEXTURE_MAG_FILTER, mag ? gl.LINEAR : gl.NEAREST);
-      const minf = [gl.NEAREST, gl.NEAREST_MIPMAP_NEAREST, gl.NEAREST_MIPMAP_LINEAR, gl.NEAREST,
-        gl.LINEAR, gl.LINEAR_MIPMAP_NEAREST, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR][min];
-      gl.samplerParameteri(smp, gl.TEXTURE_MIN_FILTER, t && t.mips ? minf : (min >= 4 ? gl.LINEAR : gl.NEAREST));
-      gl.bindSampler(i, smp);
+      const mode0 = this.texReg(i, 0x80) & 0x7F;
+      const key = mode0 | (t && t.mips ? 0x80 : 0);
+      if (this.samplerState[i] !== key) {
+        this.samplerState[i] = key;
+        const wrap = (w) => w === 0 ? gl.CLAMP_TO_EDGE : w === 1 ? gl.REPEAT : gl.MIRRORED_REPEAT;
+        const smp = this.samplers[i];
+        gl.samplerParameteri(smp, gl.TEXTURE_WRAP_S, wrap(mode0 & 3));
+        gl.samplerParameteri(smp, gl.TEXTURE_WRAP_T, wrap((mode0 >> 2) & 3));
+        const mag = (mode0 >> 4) & 1, min = (mode0 >> 5) & 7;
+        gl.samplerParameteri(smp, gl.TEXTURE_MAG_FILTER, mag ? gl.LINEAR : gl.NEAREST);
+        const minf = [gl.NEAREST, gl.NEAREST_MIPMAP_NEAREST, gl.NEAREST_MIPMAP_LINEAR, gl.NEAREST,
+          gl.LINEAR, gl.LINEAR_MIPMAP_NEAREST, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR][min];
+        gl.samplerParameteri(smp, gl.TEXTURE_MIN_FILTER, t && t.mips ? minf : (min >= 4 ? gl.LINEAR : gl.NEAREST));
+      }
+      gl.bindSampler(i, this.samplers[i]);
     }
     gl.activeTexture(gl.TEXTURE0);
   }

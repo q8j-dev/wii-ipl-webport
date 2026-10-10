@@ -45,18 +45,18 @@ function makeLightFunc(name, l, isAlpha) {
   let s = `${t} ${name}(${t} amb) {\n  ${t} sum = amb;\n`;
   for (let i = 0; i < 8; i++) {
     if (!(l.mask & (1 << i))) continue;
-    s += `  {\n    vec3 ldir = uLightPos[${i}] - vPosView;\n    float dist2 = dot(ldir, ldir);\n    float dist = sqrt(dist2);\n    ldir = ldir / max(dist, 1e-6);\n`;
+    s += `  {\n    vec3 ldir = uLightPos[${i}].xyz - vPosView;\n    float dist2 = dot(ldir, ldir);\n    float dist = sqrt(dist2);\n    ldir = ldir / max(dist, 1e-6);\n`;
     s += `    float nl = dot(vNrmView, ldir);\n`;
     const diff = l.diffFn === 0 ? '1.0' : l.diffFn === 1 ? 'nl' : 'max(nl, 0.0)';
     let attn = '1.0';
     if (l.attnEn) {
       if (l.attnSel) {
-        s += `    float cs = max(0.0, dot(ldir, uLightDir[${i}]));\n`;
+        s += `    float cs = max(0.0, dot(ldir, uLightDir[${i}].xyz));\n`;
         s += `    float aat = max(0.0, uLightCos[${i}].x + uLightCos[${i}].y * cs + uLightCos[${i}].z * cs * cs);\n`;
         s += `    float dat = uLightDist[${i}].x + uLightDist[${i}].y * dist + uLightDist[${i}].z * dist2;\n`;
         attn = 'aat / max(dat, 1e-6)';
       } else {
-        s += `    float cs = nl > 0.0 ? max(0.0, dot(vNrmView, uLightDir[${i}])) : 0.0;\n`;
+        s += `    float cs = nl > 0.0 ? max(0.0, dot(vNrmView, uLightDir[${i}].xyz)) : 0.0;\n`;
         s += `    float aat = max(0.0, uLightCos[${i}].x + uLightCos[${i}].y * cs + uLightCos[${i}].z * cs * cs);\n`;
         s += `    float dat = uLightDist[${i}].x + uLightDist[${i}].y * cs + uLightDist[${i}].z * cs * cs;\n`;
         attn = 'aat / max(dat, 1e-6)';
@@ -67,6 +67,31 @@ function makeLightFunc(name, l, isAlpha) {
   s += `  return clamp(sum, 0.0, 1.0);\n}\n`;
   return s;
 }
+
+// All uniforms live in one std140 block shared by every program (see the
+// UBO_* offsets, in floats, used by gpu.js).
+export const UBO_POSTEX = 0, UBO_NRM = 256, UBO_POST = 384, UBO_LCOLOR = 640, UBO_LPOS = 672, UBO_LDIR = 704,
+  UBO_LCOS = 736, UBO_LDIST = 768, UBO_PROJ = 800, UBO_PROJ2 = 804, UBO_VIEWPORT = 808, UBO_EFBSIZE = 812,
+  UBO_CHANMAT = 816, UBO_CHANAMB = 824, UBO_TEVREG = 832, UBO_KONST = 848, UBO_ALPHAREF = 864, UBO_SIZE = 868;
+const GX_BLOCK = `layout(std140) uniform Gx {
+  vec4 uPosTex[64];
+  vec4 uNrm[32];
+  vec4 uPost[64];
+  vec4 uLightColor[8];
+  vec4 uLightPos[8];
+  vec4 uLightDir[8];
+  vec4 uLightCos[8];
+  vec4 uLightDist[8];
+  vec4 uProj;
+  vec4 uProj2;
+  vec4 uViewport;
+  vec4 uEfbSize;
+  vec4 uChanMat[2];
+  vec4 uChanAmb[2];
+  vec4 uTevReg[4];
+  vec4 uKonst[4];
+  vec4 uAlphaRef;
+};`;
 
 export function buildShaders(c) {
   // ---------------------------------------------------------------- vertex
@@ -85,20 +110,7 @@ layout(location=9) in vec4 aTex45;
 layout(location=10) in vec4 aTex67;
 layout(location=11) in vec4 aTexMtx0;
 layout(location=12) in vec4 aTexMtx1;
-uniform vec4 uPosTex[64];
-uniform vec3 uNrm[32];
-${c.dualTex ? 'uniform vec4 uPost[64];' : ''}
-uniform vec4 uProj;
-uniform vec2 uProj2;
-uniform vec4 uViewport;
-uniform vec2 uEfbSize;
-uniform vec4 uChanMat[2];
-uniform vec4 uChanAmb[2];
-uniform vec4 uLightColor[8];
-uniform vec3 uLightPos[8];
-uniform vec3 uLightDir[8];
-uniform vec3 uLightCos[8];
-uniform vec3 uLightDist[8];
+${GX_BLOCK}
 out vec4 vColor0;
 out vec4 vColor1;
 ${c.texgens.map((_, i) => `out vec3 vTex${i};`).join('\n')}
@@ -131,7 +143,7 @@ vec3 mul34(int r, vec4 v) { return vec3(dot(uPosTex[r], v), dot(uPosTex[r + 1], 
   vec4 p4 = vec4(aPos, 1.0);
   vPosView = mul34(pn, p4);
   int nb = pn & 31;
-  vNrmView = normalize(vec3(dot(uNrm[nb], aNrm), dot(uNrm[nb + 1], aNrm), dot(uNrm[nb + 2], aNrm)) + vec3(1e-9));
+  vNrmView = normalize(vec3(dot(uNrm[nb].xyz, aNrm), dot(uNrm[nb + 1].xyz, aNrm), dot(uNrm[nb + 2].xyz, aNrm)) + vec3(1e-9));
   vec4 clip;
 `;
   if (c.proj) {
@@ -199,9 +211,7 @@ in vec4 vColor0;
 in vec4 vColor1;
 ${c.texgens.map((_, i) => `in vec3 vTex${i};`).join('\n')}
 uniform sampler2D uTex0, uTex1, uTex2, uTex3, uTex4, uTex5, uTex6, uTex7;
-uniform vec4 uTevReg[4];
-uniform vec4 uKonst[4];
-uniform vec2 uAlphaRef;
+${GX_BLOCK}
 out vec4 fragColor;
 `;
   const usedMaps = new Set();

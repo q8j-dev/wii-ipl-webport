@@ -24,6 +24,7 @@
 // Finally the triple/datalayout are switched to wasm32-unknown-emscripten. The
 // two datalayouts agree on every size and alignment used by the code.
 
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/AttributeMask.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CFG.h"
@@ -814,6 +815,32 @@ struct BESwapPass : PassInfoMixin<BESwapPass> {
 // prototypes that disagree between translation units (int vs void returns,
 // extra or missing arguments). wasm requires exact signatures, so direct calls
 // are adapted to the callee's real type.
+// The program defines C library functions of its own (MSL's printf family,
+// string and wide string functions...) that work on big-endian memory. LLVM
+// recognizes such names as library calls and may rewrite them into calls to
+// Emscripten's native libc (sprintf -> siprintf, printf -> puts, ...), so
+// definitions that take or return pointers get a name LLVM does not know.
+// Pure value functions (math) keep their names and optimizations.
+static void renameLibFuncs(Module& M) {
+    TargetLibraryInfoImpl TLII(Triple(M.getTargetTriple()));
+    TargetLibraryInfo TLI(TLII);
+    for (Function& F : M) {
+        if (F.isDeclaration() || F.isIntrinsic())
+            continue;
+        LibFunc LF;
+        if (!TLI.getLibFunc(F, LF))
+            continue;
+        bool pointers = F.getReturnType()->isPointerTy() || F.isVarArg();
+        for (Argument& A : F.args())
+            pointers |= A.getType()->isPointerTy();
+        if (!pointers)
+            continue;
+        std::string old = F.getName().str();
+        F.setName("__be_" + old);
+        errs() << "befix: renamed library function " << old << "\n";
+    }
+}
+
 struct BEFixPass : PassInfoMixin<BEFixPass> {
     static Value* convert(IRBuilder<>& B, Value* V, Type* T) {
         Type* S = V->getType();
@@ -981,6 +1008,7 @@ struct BEFixPass : PassInfoMixin<BEFixPass> {
             CI->eraseFromParent();
         }
         stubUndefined(M);
+        renameLibFuncs(M);
         return PreservedAnalyses::none();
     }
     static bool isRequired() { return true; }

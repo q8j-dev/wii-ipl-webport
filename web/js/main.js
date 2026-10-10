@@ -58,6 +58,8 @@ function saveChanges(db, changes) {
   for (const [path, node] of changes) st.put(node, path);
 }
 
+const params = new URLSearchParams(location.search);
+
 async function boot() {
   const gl = canvas.getContext('webgl2', {antialias: false, alpha: false, depth: false, stencil: false,
     preserveDrawingBuffer: false, powerPreference: 'high-performance'});
@@ -120,7 +122,7 @@ async function boot() {
     heap: () => mod.HEAPU8,
     hwregBase: mod._webx_hwreg(),
     onToken: (t) => mod._webx_gx_token(t),
-    scale: Math.min(3, Math.max(2, Math.ceil(window.devicePixelRatio * canvas.clientHeight / 456))),
+    scale: Number(params.get('scale')) || Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio * canvas.clientHeight / 456))),
   });
   const present = gpu.present.bind(gpu);
   gpu.present = (...a) => {
@@ -136,7 +138,8 @@ async function boot() {
   document.body.classList.add('running');
   setStatus('');
   window.wii = {mod, gpu, nand, host: wii};
-  if (new URLSearchParams(location.search).has('heartbeat')) {
+  gpu.noDraw = params.has('nodraw');
+  if (params.has('heartbeat')) {
     setInterval(() => console.log(`heartbeat waits=${wii.waits} frames=${gpu.frameCount} draws=${gpu.stats.draws}`), 1000);
   }
   const crashed = (e) => {
