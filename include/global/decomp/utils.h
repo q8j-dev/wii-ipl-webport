@@ -22,6 +22,9 @@
 
 #ifdef __MWERKS__
 #define ADDRESS(addr) : (addr)
+#elif defined(RVL_WEB)
+// Placed at its fixed address by the web build's BESwap pass.
+#define ADDRESS(addr) __attribute__((annotate("wiiaddr", (addr))))
 #else
 #define ADDRESS(addr)
 #endif

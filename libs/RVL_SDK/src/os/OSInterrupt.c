@@ -37,6 +37,7 @@ static void ExternalInterruptHandler(register __OSException exception, register 
 void __RAS_OSDisableInterrupts_begin();
 void __RAS_OSDisableInterrupts_end();
 
+#ifndef RVL_WEB  // web/hal/os_web.c
 asm BOOL OSDisableInterrupts() {
     // clang-format off
 #ifdef __MWERKS__
@@ -85,6 +86,8 @@ _restore:
 #endif // __MWERKS__
     // clang-format on
 }
+
+#endif  // RVL_WEB
 
 __OSInterruptHandler __OSSetInterruptHandler(__OSInterrupt interrupt, __OSInterruptHandler handler) {
     __OSInterruptHandler oldHandler;

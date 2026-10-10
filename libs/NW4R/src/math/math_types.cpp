@@ -20,6 +20,10 @@ namespace nw4r {
                     psq_st a, 48(pMtx), 0, 0
                     psq_st c, 56(pMtx), 0, 0
                 }
+            #elif defined(RVL_WEB)
+                for (int i = 0; i < 4; i++)
+                    for (int j = 0; j < 4; j++)
+                        pMtx->m[i][j] = i == j ? 1.0f : 0.0f;
             #endif // __MWERKS__
             // clang-format on
         }

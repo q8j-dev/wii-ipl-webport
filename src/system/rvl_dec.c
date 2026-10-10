@@ -7,7 +7,7 @@
 static u8 work[0x9008];
 
 int Rvl_decode(u8* out, u8* in) {
-#ifdef TARGET_RVL
+#if defined(TARGET_RVL) && !defined(RVL_WEB)
     // Original ASM Implementation
 
     register u8* dataIn = in;

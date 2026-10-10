@@ -28,6 +28,8 @@ namespace nw4r {
             register f32 ret;
             #ifdef __MWERKS__
             asm { fsel ret, cond, ifPos, ifNeg };
+            #elif defined(RVL_WEB)
+            ret = cond >= 0.0f ? ifPos : ifNeg;
             #endif // __MWERKS__
             return ret;
         }
@@ -36,6 +38,8 @@ namespace nw4r {
             register f32 ret;
             #ifdef __MWERKS__
                 asm { fabs ret, x }
+            #elif defined(RVL_WEB)
+            ret = __builtin_fabsf(x);
             #endif // __MWERKS__
             return ret;
         }

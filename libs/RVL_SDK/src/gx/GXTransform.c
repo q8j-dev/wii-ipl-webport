@@ -24,7 +24,9 @@ static void WriteProjPS(const register f32 proj[6], register volatile void* dest
         psq_st p23,  0(dest), 0, 0
         psq_st p45,  0(dest), 0, 0
     }
-#endif // __MWERKS__
+#elif defined(RVL_WEB)
+    for (int i = 0; i < 6; i++) GX_WRITE_F32(proj[i]);
+#endif
     // clang-format on
 }
 
@@ -41,7 +43,9 @@ inline void Copy6Floats(const register f32* dst, register const f32* src) {
         psq_st ps_1,  8(dst), 0, 0
         psq_st ps_2, 16(dst), 0, 0
     }
-#endif // __MWERKS__
+#elif defined(RVL_WEB)
+    for (int i = 0; i < 6; i++) ((f32*)dst)[i] = src[i];
+#endif
     // clang-format on
 }
 
@@ -69,7 +73,9 @@ static void WriteMTXPS4x3(const register f32 mtx[3][4], register volatile f32* d
         psq_st a20_a21, 0(dest), 0, 0
         psq_st a22_a23, 0(dest), 0, 0
     }
-#endif // __MWERKS__
+#elif defined(RVL_WEB)
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 4; c++) GX_WRITE_F32(mtx[r][c]);
+#endif
     // clang-format on
 }
 
@@ -97,7 +103,9 @@ static void WriteMTXPS3x3from3x4(register f32 mtx[3][4], register volatile f32* 
         psq_st a20_a21, 0(dest), 0, 0
         stfs   a22_a23, 0(dest)
     }
-#endif // __MWERKS__
+#elif defined(RVL_WEB)
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) GX_WRITE_F32(mtx[r][c]);
+#endif
     // clang-format on
 }
 
@@ -119,7 +127,9 @@ static void WriteMTXPS4x2(const register f32 mtx[2][4], register volatile f32* d
         psq_st a10_a11, 0(dest), 0, 0
         psq_st a12_a13, 0(dest), 0, 0
     }
-#endif // __MWERKS__
+#elif defined(RVL_WEB)
+    for (int r = 0; r < 2; r++) for (int c = 0; c < 4; c++) GX_WRITE_F32(mtx[r][c]);
+#endif
     // clang-format on
 }
 

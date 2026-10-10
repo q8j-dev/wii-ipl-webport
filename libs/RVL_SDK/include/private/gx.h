@@ -263,10 +263,17 @@ void __GetImageTileCount(GXTexFmt fmt, u16 wd, u16 ht, u32* rowTiles, u32* colTi
 
 // Private Macros
 
+#ifdef RVL_WEB
+#define GX_WRITE_U8(ub) __GXW_u8((u8)(ub))
+#define GX_WRITE_U16(us) __GXW_u16((u16)(us))
+#define GX_WRITE_U32(ui) __GXW_u32((u32)(ui))
+#define GX_WRITE_F32(f) __GXW_f32((f32)(f))
+#else
 #define GX_WRITE_U8(ub) GXWGFifo.u8 = (u8)(ub)
 #define GX_WRITE_U16(us) GXWGFifo.u16 = (u16)(us)
 #define GX_WRITE_U32(ui) GXWGFifo.u32 = (u32)(ui)
 #define GX_WRITE_F32(f) GXWGFifo.f32 = (f32)(f)
+#endif
 
 #define GX_WRITE_XF_REG(addr, value)                                                                                                                 \
     {                                                                                                                                                \

@@ -39,6 +39,19 @@ inline void PushLight(const register GXLightObj* lt_obj, register void* dest) {
         psq_st  pz_dx, 0(dest), 0, 0
         psq_st  dy_dz, 0(dest), 0, 0
     }
+#elif defined(RVL_WEB)
+    {
+        const __GXLightObjInt* obj = (const __GXLightObjInt*)lt_obj;
+        int i;
+        GX_WRITE_U32(0);
+        GX_WRITE_U32(0);
+        GX_WRITE_U32(0);
+        GX_WRITE_U32(obj->Color);
+        for (i = 0; i < 3; i++) GX_WRITE_F32(obj->a[i]);
+        for (i = 0; i < 3; i++) GX_WRITE_F32(obj->k[i]);
+        for (i = 0; i < 3; i++) GX_WRITE_F32(obj->lpos[i]);
+        for (i = 0; i < 3; i++) GX_WRITE_F32(obj->ldir[i]);
+    }
 #endif
     // clang-format on
 }

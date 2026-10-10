@@ -1,0 +1,7 @@
+# Symbols referenced under one mangling and defined under another
+# (MWCC-mangled names spelled through extern "C" in the decompilation).
+# <missing> <defined>
+_ZN3ipl5scene13ChannelSelect10msInitFlagE msInitFlag__Q33ipl5scene13ChannelSelect
+__ct__Q33ipl4math4VEC2Fff _ZN3ipl4math4VEC2C1Eff
+__dt__Q34nw4r3snd11SoundHandleFv _ZN4nw4r3snd11SoundHandleD2Ev
+smButtonName__Q33ipl5scene6Button _ZN3ipl5scene6Button12smButtonNameE

@@ -24,6 +24,7 @@ void C_MTXIdentity(Mtx m) {
     m[2][3] = 0;
 }
 
+#ifndef RVL_WEB
 void PSMTXIdentity(register Mtx m) {
     register f32 c_zero;
     register f32 c_one;
@@ -44,6 +45,7 @@ void PSMTXIdentity(register Mtx m) {
         psq_st c_10, 40(m), 0, 0
     }
 }
+#endif  // RVL_WEB
 
 void C_MTXCopy(const Mtx src, Mtx dst) {
     if (src != dst) {
@@ -62,6 +64,7 @@ void C_MTXCopy(const Mtx src, Mtx dst) {
     }
 }
 
+#ifndef RVL_WEB
 asm void PSMTXCopy(const register Mtx src, register Mtx dst) {
     psq_l f0, 0(src), 0, 0
     psq_st f0, 0(dst), 0, 0
@@ -76,6 +79,7 @@ asm void PSMTXCopy(const register Mtx src, register Mtx dst) {
     psq_l f5, 40(src), 0, 0
     psq_st f5, 40(dst), 0, 0
 }
+#endif  // RVL_WEB
 
 void C_MTXConcat(const Mtx a, const Mtx b, Mtx ab) {
     Mtx mTmp;
@@ -108,6 +112,7 @@ void C_MTXConcat(const Mtx a, const Mtx b, Mtx ab) {
     }
 }
 
+#ifndef RVL_WEB
 asm void PSMTXConcat(const register Mtx a, const register Mtx b, register Mtx ab) {
     nofralloc
     stwu r1, -64(r1)
@@ -162,6 +167,7 @@ asm void PSMTXConcat(const register Mtx a, const register Mtx b, register Mtx ab
     addi r1, r1, 64
     blr
 }
+#endif  // RVL_WEB
 
 u32 C_MTXInverse(const Mtx src, Mtx inv) {
     Mtx mTmp;
@@ -206,6 +212,7 @@ u32 C_MTXInverse(const Mtx src, Mtx inv) {
     return 1;
 }
 
+#ifndef RVL_WEB
 asm u32 PSMTXInverse(const register Mtx src, register Mtx inv) {
     psq_l f0, 0(src), 1, 0
     psq_l f1, 4(src), 0, 0
@@ -270,6 +277,7 @@ skip_return:
     li r3, 1
     psq_st f7, 44(inv), 1, 0
 }
+#endif  // RVL_WEB
 
 u32 C_MTXInvXpose(const Mtx src, Mtx invX) {
     Mtx mTmp;
@@ -314,6 +322,7 @@ u32 C_MTXInvXpose(const Mtx src, Mtx invX) {
     return 1;
 }
 
+#ifndef RVL_WEB
 asm u32 PSMTXInvXpose(const register Mtx src, register Mtx invX) {
     psq_l f0, 0(src), 1, 0
     psq_l f1, 4(src), 0, 0
@@ -366,6 +375,7 @@ skip_return:
     psq_st f9, 24(invX), 1, 0
     psq_st f8, 40(invX), 1, 0
 }
+#endif  // RVL_WEB
 
 void C_MTXRotTrig(Mtx m, char axis, f32 sinA, f32 cosA);
 void PSMTXRotTrig(Mtx m, char axis, f32 sinA, f32 cosA);
@@ -379,12 +389,14 @@ void C_MTXRotRad(Mtx m, char axis, f32 rad) {
     C_MTXRotTrig(m, axis, sinA, cosA);
 }
 
+#ifndef RVL_WEB
 void PSMTXRotRad(Mtx m, char axis, f32 rad) {
     f32 sinA, cosA;
     sinA = sin(rad);
     cosA = cos(rad);
     PSMTXRotTrig(m, axis, sinA, cosA);
 }
+#endif  // RVL_WEB
 
 void C_MTXRotTrig(Mtx m, char axis, f32 sinA, f32 cosA) {
     switch (axis) {
@@ -442,6 +454,7 @@ void C_MTXRotTrig(Mtx m, char axis, f32 sinA, f32 cosA) {
     }
 }
 
+#ifndef RVL_WEB
 void PSMTXRotTrig(register Mtx m, register char axis, register f32 sinA, register f32 cosA) {
     register f32 fc0, fc1, nsinA;
     register f32 fw0, fw1, fw2, fw3;
@@ -504,6 +517,7 @@ void PSMTXRotTrig(register Mtx m, register char axis, register f32 sinA, registe
     _end:
     }
 }
+#endif  // RVL_WEB
 
 void C_MTXTrans(Mtx m, f32 xT, f32 yT, f32 zT) {
     m[0][0] = 1;
@@ -520,6 +534,7 @@ void C_MTXTrans(Mtx m, f32 xT, f32 yT, f32 zT) {
     m[2][3] = zT;
 }
 
+#ifndef RVL_WEB
 void PSMTXTrans(register Mtx m, register f32 xT, register f32 yT, register f32 zT) {
     register f32 c0 = 0.0f;
     register f32 c1 = 1.0f;
@@ -537,6 +552,7 @@ void PSMTXTrans(register Mtx m, register f32 xT, register f32 yT, register f32 z
         stfs c1, 0(m)
     }
 }
+#endif  // RVL_WEB
 
 void C_MTXTransApply(const Mtx src, Mtx dst, f32 xT, f32 yT, f32 zT) {
     if (src != dst) {
@@ -557,6 +573,7 @@ void C_MTXTransApply(const Mtx src, Mtx dst, f32 xT, f32 yT, f32 zT) {
 }
 
 
+#ifndef RVL_WEB
 asm void PSMTXTransApply(const register Mtx src, register Mtx dst, register f32 xT, register f32 yT, register f32 zT) {
     nofralloc
     psq_l fp4, 0(src), 0, 0
@@ -579,6 +596,7 @@ asm void PSMTXTransApply(const register Mtx src, register Mtx dst, register f32 
     psq_st fp8, 40(dst), 0, 0
     blr
 }
+#endif  // RVL_WEB
 
 void C_MTXScale(Mtx m, f32 xS, f32 yS, f32 zS) {
     m[0][0] = xS;
@@ -595,6 +613,7 @@ void C_MTXScale(Mtx m, f32 xS, f32 yS, f32 zS) {
     m[2][3] = 0;
 }
 
+#ifndef RVL_WEB
 void PSMTXScale(register Mtx m, register f32 xS, register f32 yS, register f32 zS) {
     register f32 c0 = 0.0f;
 
@@ -609,6 +628,7 @@ void PSMTXScale(register Mtx m, register f32 xS, register f32 yS, register f32 z
         stfs c0, 44(m)
     }
 }
+#endif  // RVL_WEB
 
 void C_MTXScaleApply(const Mtx src, Mtx dst, f32 xS, f32 yS, f32 zS) {
     dst[0][0] = (src[0][0] * xS);
@@ -626,6 +646,7 @@ void C_MTXScaleApply(const Mtx src, Mtx dst, f32 xS, f32 yS, f32 zS) {
 }
 
 
+#ifndef RVL_WEB
 asm void PSMTXScaleApply(const register Mtx src, register Mtx dst, register f32 xS, register f32 yS, register f32 zS) {
     nofralloc
     frsp xS, xS
@@ -651,6 +672,7 @@ asm void PSMTXScaleApply(const register Mtx src, register Mtx dst, register f32 
     psq_st fp2, 40(dst), 0, 0
     blr
 }
+#endif  // RVL_WEB
 
 void C_MTXLookAt(Mtx m, const Point3d* camPos, const Vec* camUp, const Point3d* target) {
     Vec vLook;

@@ -7,6 +7,11 @@
 extern "C" {
 #endif
 
+#ifdef RVL_WEB
+// Web build: lets busy-wait loops take pending "interrupts" (web/hal/os_web.c).
+void __web_poll(int idle);
+#endif
+
 #include <revolution/os/OSMemMap.h>
 
 #include <revolution/os/OSTime.h>
@@ -40,12 +45,22 @@ extern "C" {
 #define OS_BASE_CACHED (OS_CACHED_REGION_PREFIX << 16)
 #define OS_BASE_UNCACHED (OS_UNCACHED_REGION_PREFIX << 16)
 
+#ifdef RVL_WEB
+// Web build: wasm addresses are Wii physical addresses (see web/tools/beswap).
+#define OSPhysicalToCached(paddr) ((void*)((u32)(paddr)))
+#define OSPhysicalToUncached(paddr) ((void*)((u32)(paddr)))
+#define OSCachedToPhysical(caddr) ((u32)(caddr) & 0x3FFFFFFF)
+#define OSUncachedToPhysical(ucaddr) ((u32)(ucaddr) & 0x3FFFFFFF)
+#define OSCachedToUncached(caddr) ((void*)(caddr))
+#define OSUncachedToCached(ucaddr) ((void*)(ucaddr))
+#else
 #define OSPhysicalToCached(paddr) ((void*)((u32)(paddr) + OS_BASE_CACHED))
 #define OSPhysicalToUncached(paddr) ((void*)((u32)(paddr) + OS_BASE_UNCACHED))
 #define OSCachedToPhysical(caddr) ((u32)((u8*)(caddr) - OS_BASE_CACHED))
 #define OSUncachedToPhysical(ucaddr) ((u32)((u8*)(ucaddr) - OS_BASE_UNCACHED))
 #define OSCachedToUncached(caddr) ((void*)((u8*)(caddr) + (OS_BASE_UNCACHED - OS_BASE_CACHED)))
 #define OSUncachedToCached(ucaddr) ((void*)((u8*)(ucaddr) - (OS_BASE_UNCACHED - OS_BASE_CACHED)))
+#endif
 
 #define OSRoundUp32B(x) ROUNDUP((unsigned long)(x), 32)
 #define OSRoundDown32B(x) ROUNDDOWN((unsigned long)(x), 32)

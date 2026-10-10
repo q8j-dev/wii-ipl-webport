@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wii Menu</title>
+<style>
+  :root { --bg: #000; --fg: #c8d0d8; --dim: #6b7682; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+  #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #screen { width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16));
+    display: block; background: #000; cursor: none; touch-action: none; }
+  body:not(.running) #screen { cursor: default; }
+  #status { position: absolute; left: 0; right: 0; bottom: 45%; text-align: center; color: var(--fg);
+    pointer-events: none; white-space: pre-wrap; padding: 0 16px; }
+  #fps { position: absolute; right: 8px; top: 6px; color: var(--dim); font-size: 12px; opacity: 0.7;
+    pointer-events: none; font-variant-numeric: tabular-nums; }
+  #help { position: absolute; left: 8px; bottom: 6px; color: var(--dim); font-size: 12px; opacity: 0.7;
+    pointer-events: none; }
+  body.halted #screen { opacity: 0.4; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="screen" width="1280" height="720"></canvas></div>
+<div id="status">Loading…</div>
+<div id="fps"></div>
+<div id="help">Mouse: point · Left click / Enter: A · Right click / Esc: B · H: HOME · +/−: plus/minus · 1/2</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -19,6 +19,7 @@
 static int YearDays[MONTH_MAX]      = {0,   31,  59,  90,  120, 151, 181, 212, 243, 273, 304, 334};
 static int LeapYearDays[MONTH_MAX]  = {0,   31,  60,  91,  121, 152, 182, 213, 244, 274, 305, 335};
 
+#ifndef RVL_WEB  // web/hal/os_web.c
 asm OSTime OSGetTime() {
 #ifdef __MWERKS__
     nofralloc
@@ -59,6 +60,11 @@ asm static void __SetTime(OSTime time) {
 }
 
 // clang-format on
+
+#else
+void __web_set_time(OSTime time);
+#define __SetTime __web_set_time
+#endif  // RVL_WEB
 
 void __OSSetTime(OSTime time) {
     OSTime* systemTime = &__OSSystemTime;

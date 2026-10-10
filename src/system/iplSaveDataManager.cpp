@@ -528,7 +528,7 @@ namespace ipl {
             }
         }
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) || defined(RVL_WEB)
 
         // MWCC needs IRO disabled to recompute title-list addresses at each use.
 #pragma push
@@ -794,7 +794,7 @@ namespace ipl {
             mData.prevSDPage = 0;
         }
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) || defined(RVL_WEB)
         void Manager::pushTitleCache(ESTitleId titleId) {
             if (titleId == ES_TITLE_ID(TITLE_TYPE_CHANNEL, 'HATE') || titleId == ES_TITLE_ID(TITLE_TYPE_CHANNEL, 'HADE')) {
                 return;

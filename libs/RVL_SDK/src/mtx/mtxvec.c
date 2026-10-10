@@ -13,6 +13,7 @@ void C_MTXMultVec(const Mtx m, const Vec* src, Vec* dst) {
     dst->z = vTmp.z;
 }
 
+#ifndef RVL_WEB
 asm void PSMTXMultVec(const register Mtx m, const register Vec* src, register Vec* dst) {
     nofralloc
     psq_l f0, Vec.x(src), 0, 0
@@ -37,5 +38,6 @@ asm void PSMTXMultVec(const register Mtx m, const register Vec* src, register Ve
     psq_st f6, Vec.z(dst), 1, 0
     blr
 }
+#endif  // RVL_WEB
 
 // clang-format on

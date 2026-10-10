@@ -6,6 +6,12 @@
 
 #include <revolution/base/PPCArch.h>
 
+#ifdef RVL_WEB
+// Web build: the "exception return" of the decrementer handler is a return to
+// the interrupt poller in web/hal/os_web.c.
+#define OSLoadContext(context) return
+#endif
+
 static BOOL OnReset(BOOL final, u32 event);
 static void DecrementerExceptionHandler(u8 type, OSContext* context);
 
@@ -191,6 +197,12 @@ static void DecrementerExceptionCallback(__OSException type, OSContext* context)
     __OSReschedule();
     OSLoadContext(context);
 }
+
+#ifdef RVL_WEB
+void __web_alarm_interrupt(OSContext* context) {
+    DecrementerExceptionCallback(OS_EXCEPTION_DECREMENTER, context);
+}
+#endif
 
 static asm void DecrementerExceptionHandler(register __OSException exception, register OSContext* context) {
     // clang-format off

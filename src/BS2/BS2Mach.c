@@ -622,6 +622,9 @@ void BS2StartGame() {
 
     StartingGame = TRUE;
     while (BS2ReadDVDState(&CoverBlock) != DVD_STATE_IDLE) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     BS2Report("BS2StartGame(1)\n");
@@ -634,6 +637,9 @@ void BS2StartGame() {
         closeResult = NANDCloseAsync(&BS2CacheFileInfo, BS2NANDCallback, &BS2NandBlock);
         if (closeResult == NAND_RESULT_OK) {
             while (NandPending != 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
             }
             if (CacheFailed != 0) {
                 NANDDelete("/title/00000001/00000002/data/cache.dat");
@@ -644,6 +650,9 @@ void BS2StartGame() {
     }
 
     while (!PADSync()) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     base = (u8 *)0x80000000;
@@ -721,6 +730,9 @@ void BS2StartGame() {
     LowReadResult = 0;
     DVDLowReadDiskID(&DiskID, callback);
     while (LowReadResult == 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     status = LowReadResult;
@@ -736,6 +748,9 @@ void BS2StartGame() {
         LowReadResult = 0;
         DVDLowRequestError(callback);
         while (LowReadResult == 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
         }
         driveError = DVDLowGetImmBufferReg() & 0xFF000000;
         if (driveError == 0x01000000 || (driveError = DVDLowGetImmBufferReg() & 0xFF000000) == 0x03000000) {
@@ -770,6 +785,9 @@ disk_done:
                             callback);
     }
     while (LowReadResult == 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     status = LowReadResult;
@@ -787,6 +805,9 @@ disk_done:
         LowReadResult = 0;
         DVDLowRequestError(callback);
         while (LowReadResult == 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
         }
         driveError = DVDLowGetImmBufferReg() & 0xFF000000;
         if (driveError == 0x01000000 || (driveError = DVDLowGetImmBufferReg() & 0xFF000000) == 0x03000000) {
@@ -854,6 +875,9 @@ void BS2StartGCGame() {
 
     StartingGame = TRUE;
     while (BS2ReadDVDState(&CoverBlock) != DVD_STATE_IDLE) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     soundMode = SCGetSoundMode();
@@ -898,6 +922,9 @@ void BS2StartGCGame() {
     ret = NANDCloseAsync(&BS2CacheFileInfo, BS2NANDCallback, &BS2NandBlock);
     if (ret == NAND_RESULT_OK) {
         while (NandPending != 0) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
         }
         if (CacheFailed != 0) {
             NANDDelete("/title/00000001/00000002/data/cache.dat");
@@ -907,6 +934,9 @@ void BS2StartGCGame() {
     }
 
     while (!PADSync()) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     OSDisableInterrupts();

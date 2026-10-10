@@ -65,6 +65,8 @@ long int labs(long n);
 inline double fabs(double x) {
 #ifdef __MWERKS__
     return __fabs(x);
+#elif defined(RVL_WEB)
+    return __builtin_fabs(x);
 #endif  // __MWERKS__
 }
 inline float fabsf(float x) {

@@ -14,6 +14,7 @@ void C_VECNormalize(const Vec* src, Vec* unit) {
     unit->z = src->z * mag;
 }
 
+#ifndef RVL_WEB
 void PSVECNormalize(const register Vec* src, register Vec* unit) {
     register float c_half = 0.5f;
     register float c_three = 3.0f;
@@ -43,6 +44,7 @@ void PSVECNormalize(const register Vec* src, register Vec* unit) {
         psq_st v1_z, 0x8(unit), 1, 0
     }
 }
+#endif  // RVL_WEB
 
 void C_VECCrossProduct(const Vec* a, const Vec* b, Vec* axb) {
     Vec vTmp;
@@ -55,6 +57,7 @@ void C_VECCrossProduct(const Vec* a, const Vec* b, Vec* axb) {
     axb->z = vTmp.z;
 }
 
+#ifndef RVL_WEB
 asm void PSVECCrossProduct(const register Vec* a, const register Vec* b, register Vec* axb) {
     psq_l f1, Vec.x(b), 0, 0
     lfs f2, Vec.z(a)
@@ -71,5 +74,6 @@ asm void PSVECCrossProduct(const register Vec* a, const register Vec* b, registe
     ps_neg f10, f10
     psq_st f10, Vec.y(axb), 0, 0
 }
+#endif  // RVL_WEB
 
 // clang-format on

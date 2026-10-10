@@ -74,6 +74,14 @@
 
 #define OS_THREAD_STACK_MAGIC 0xDEADBABE
 
+#ifdef RVL_WEB
+// Web build: threads are fibers (web/hal/os_thread_web.c). These replace the
+// context save/load and the idle spin of SelectThread.
+void __web_thread_create(OSThread* thread, void* (*func)(void*), void* param, void* stack, u32 stackSize);
+void __web_switch_thread(OSThread* to);
+void __web_idle(void);
+#endif
+
 /* Run queue */
 static vu32 RunQueueBits;
 static OSThreadQueue RunQueue[OS_PRIORITY_MAX + 1];
@@ -103,10 +111,12 @@ static void OSClearStack(u8 value) {
     u32 val32 = (u32)value;
     pattern = (val32 << 24) | (val32 << 16) | (val32 << 8) | val32;
 
+#ifndef RVL_WEB
     sp = (u32*)OSGetStackPointer();
     for (p = __OSCurrentThread->stackEnd + 1; p < sp; ++p) {
         *p = pattern;
     }
+#endif
 }
 
 void OSSetCurrentThread(OSThread* thread);
@@ -356,9 +366,11 @@ OSThread* SelectThread(BOOL yield) {
             currentThread->state = OS_THREAD_STATE_READY;
             SetRun(currentThread);
         }
+#ifndef RVL_WEB
         if (!(currentThread->context.state & OS_THREAD_STATE_RUNNING) && OSSaveContext(&currentThread->context) != 0) {
             return NULL;
         }
+#endif
     }
 
     if (RunQueueBits == 0) {
@@ -366,8 +378,14 @@ OSThread* SelectThread(BOOL yield) {
         OSSetCurrentContext(&IdleContext);
         do {
             OSEnableInterrupts();
+#ifdef RVL_WEB
+            while (RunQueueBits == 0) {
+                __web_idle();
+            }
+#else
             while (RunQueueBits == 0) {
             }
+#endif
             OSDisableInterrupts();
         } while (RunQueueBits == 0);
         OSClearContext(&IdleContext);
@@ -386,8 +404,16 @@ OSThread* SelectThread(BOOL yield) {
     }
     nextThread->queue = NULL;
     nextThread->state = OS_THREAD_STATE_RUNNING;
+#ifdef RVL_WEB
+    OSSetCurrentThread(nextThread);
+    OSSetCurrentContext(&nextThread->context);
+    // Returns once the calling fiber's thread is scheduled again.
+    __web_switch_thread(nextThread);
+    return NULL;
+#else
     __OSSwitchThread(nextThread);
     return nextThread;
+#endif
 }
 
 void __OSReschedule() {
@@ -427,7 +453,11 @@ BOOL OSCreateThread(OSThread* thread, void* (*ThreadFunc)(void*), void* param, v
     ((u32*)sp)[0] = 0;
     ((u32*)sp)[1] = 0;
 
+#ifdef RVL_WEB
+    __web_thread_create(thread, ThreadFunc, param, stack, stackSize);
+#else
     OSInitContext(&thread->context, (u32)ThreadFunc, sp);
+#endif
 
     thread->context.lr = (u32)OSExitThread;
     thread->context.gpr[3] = (u32)param;

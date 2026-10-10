@@ -2252,6 +2252,9 @@ u32 __DVDGetCoverStatus() {
     DVDLowPrepareCoverRegister(__BS2DVDLowCallback);
 
     while (!__BS2DVDLowIntType) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 
     if (!(__BS2DVDLowIntType & 1)) {
@@ -2275,6 +2278,9 @@ void __DVDResetWithNoSpinup() {
     DVDLowReset(__BS2DVDLowCallback);
 
     while (!__BS2DVDLowIntType) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 }
 
@@ -2309,6 +2315,9 @@ void __DVDPrepareReset() {
     OSEnableInterrupts();
 
     while (Prepared != TRUE) {
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     }
 }
 

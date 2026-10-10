@@ -19,6 +19,8 @@ namespace nw4r {
                     fnmsubs work0, work0, x, c_three  // (3 - x * rsqrt^2)
                     fmuls work1, work0, work1         // (3 - x * rsqrt^2) * (rsqrt * 0.5)
                 }
+            #elif defined(RVL_WEB)
+                work1 = 1.0f / __builtin_sqrtf(x);
             #endif // __MWERKS__
             // clang-format on
             return work1;

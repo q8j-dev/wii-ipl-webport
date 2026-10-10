@@ -35,7 +35,7 @@
 
 #include <revolution/rso.h>
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) || defined(RVL_WEB)
 extern "C" void initOnMemory__Q33ipl3snd6SystemFPCvPQ23EGG4HeapUl();
 extern "C" const f32 scOrthoLeft;
 extern "C" const f32 scOrthoRight;
@@ -1347,7 +1347,7 @@ namespace ipl {
     }
 }  // namespace ipl
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) || defined(RVL_WEB)
 extern "C" const f32 scOrthoLeft = -304.0f;
 extern "C" const f32 scOrthoRight = 304.0f;
 extern "C" const f32 scOrthoBottom = 228.0f;

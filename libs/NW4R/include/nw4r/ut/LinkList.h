@@ -153,6 +153,15 @@ namespace nw4r {
                     return *this;
                 }
 
+#ifdef RVL_WEB
+                // MWCC falls back to the prefix form for it++.
+                ReverseIterator operator++(int) {
+                    ReverseIterator prev = *this;
+                    --mCurrent;
+                    return prev;
+                }
+#endif
+
                 const typename TIter::TElem* operator->() const { return &this->operator*(); }
 
                 typename TIter::TElem& operator*() const {

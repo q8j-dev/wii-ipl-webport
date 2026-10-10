@@ -38,6 +38,8 @@ static f32 __OSu16tof32(register const u16* arg) {
     // clang-format off
 #ifdef __MWERKS__
     asm { psq_l ret, 0(arg), 1, 3 }
+#elif defined(RVL_WEB)
+    ret = (f32)*arg;
 #endif
     // clang-format on
     return ret;
@@ -58,6 +60,8 @@ static u8 __OSf32tou8(register f32 arg) {
     asm {
         psq_st arg, 0(ptr), 1, 2
     }
+#elif defined(RVL_WEB)
+    *(u8*)ptr = arg <= 0.0f ? 0 : arg >= 255.0f ? 255 : (u8)arg;
 #endif
     // clang-format on
     r = *(u8*)ptr;
@@ -75,6 +79,8 @@ static u16 __OSf32tou16(register f32 arg) {
     // clang-format off
 #ifdef __MWERKS__
     asm { psq_st arg, 0(ptr), 1, 3 }
+#elif defined(RVL_WEB)
+    *(u16*)ptr = arg <= 0.0f ? 0 : arg >= 65535.0f ? 65535 : (u16)arg;
 #endif
     // clang-format on
     r = *(u16*)ptr;
@@ -90,6 +96,8 @@ static f32 __OSs16tof32(register const s16* arg) {
     // clang-format off
 #ifdef __MWERKS__
     asm { psq_l ret, 0(arg), 1, 5 }
+#elif defined(RVL_WEB)
+    ret = (f32)*arg;
 #endif
     // clang-format on
     return ret;
@@ -106,6 +114,8 @@ static s16 __OSf32tos16(register f32 arg) {
     // clang-format off
 #ifdef __MWERKS__
     asm { psq_st arg, 0(ptr), 1, 5 }
+#elif defined(RVL_WEB)
+    *(s16*)ptr = arg <= -32768.0f ? -32768 : arg >= 32767.0f ? 32767 : (s16)arg;
 #endif
     // clang-format on
     r = *(s16*)ptr;

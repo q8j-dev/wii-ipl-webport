@@ -10,6 +10,44 @@ extern "C" {
 #endif
 
 #define GXFIFO_ADDR 0xCC008000
+
+#ifdef RVL_WEB
+#include <web/gxfifo.h>
+
+// Only its address is used (as the "destination" of the matrix writers).
+extern volatile PPCWGPipe GXWGFifo;
+
+#define GX_INLINE_VERT_FUNC_1PARAM(name, T)                                                                                                          \
+    static inline void name##1##T(T x) { __GXW_##T(x); }
+
+#define GX_INLINE_VERT_FUNC_2PARAM(name, T)                                                                                                          \
+    static inline void name##2##T(T x, T y) {                                                                                                        \
+        __GXW_##T(x);                                                                                                                                \
+        __GXW_##T(y);                                                                                                                                \
+    }
+
+#define GX_INLINE_VERT_FUNC_3PARAM(name, T)                                                                                                          \
+    static inline void name##3##T(T x, T y, T z) {                                                                                                   \
+        __GXW_##T(x);                                                                                                                                \
+        __GXW_##T(y);                                                                                                                                \
+        __GXW_##T(z);                                                                                                                                \
+    }
+
+#define GX_INLINE_VERT_FUNC_4PARAM(name, T)                                                                                                          \
+    static inline void name##4##T(T x, T y, T z, T w) {                                                                                              \
+        __GXW_##T(x);                                                                                                                                \
+        __GXW_##T(y);                                                                                                                                \
+        __GXW_##T(z);                                                                                                                                \
+        __GXW_##T(w);                                                                                                                                \
+    }
+
+#define GX_INLINE_VERT_FUNC_INDEX8(name)                                                                                                             \
+    static inline void name##1x8(u8 x) { __GXW_u8(x); }
+
+#define GX_INLINE_VERT_FUNC_INDEX16(name)                                                                                                            \
+    static inline void name##1x16(u16 x) { __GXW_u16(x); }
+
+#else  // RVL_WEB
 volatile PPCWGPipe GXWGFifo ADDRESS(GXFIFO_ADDR);
 
 #define GX_INLINE_VERT_FUNC_1PARAM(name, T)                                                                                                          \
@@ -47,6 +85,8 @@ volatile PPCWGPipe GXWGFifo ADDRESS(GXFIFO_ADDR);
     static inline void name##1x16(u16 x) {                                                                                                           \
         GXWGFifo.u16 = x;                                                                                                                            \
     }
+
+#endif  // RVL_WEB
 
 // GXCmd
 GX_INLINE_VERT_FUNC_1PARAM(GXCmd, u8)
