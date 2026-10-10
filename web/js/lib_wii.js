@@ -33,6 +33,8 @@ addToLibrary({
     throw new Error('wii fatal: ' + s);
   },
 
+  webjs_power__async: true,
+  webjs_power: (mode) => Asyncify.handleAsync(() => Module.wii.power(mode)),
   webjs_wait__async: true,
   webjs_wait: (ms, forFrame, limitMs) => Asyncify.handleAsync(() => Module.wii.wait(ms, forFrame, limitMs)),
 
@@ -144,6 +146,7 @@ addToLibrary({
     dv.setFloat32(ptr + 8, s.y, false);
     dv.setUint32(ptr + 12, s.pointerValid ? 1 : 0, false);
     dv.setUint32(ptr + 16, 1, false);
+    dv.setUint32(ptr + 20, s.console, false);
   },
 
   // ---- Wii Settings browser (web/js/www.js) ----

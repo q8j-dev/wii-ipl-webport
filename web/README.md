@@ -41,8 +41,10 @@ The NAND image is built in the browser and kept in IndexedDB. If
 
 Controls: the mouse is the Wii Remote pointer; left click / Enter / Space / Z
 is A, right click / Esc / Backspace / X is B, H is HOME, + and − are Plus and
-Minus, 1 and 2 are the 1 and 2 buttons, arrow keys are the D-pad. A gamepad
-works too (left stick moves the pointer).
+Minus, 1 and 2 are the 1 and 2 buttons, arrow keys are the D-pad, P and R
+are the console's POWER and RESET buttons. A gamepad works too (left stick
+moves the pointer). Restarting the menu reloads the page; switching the
+console off leaves a black page that turns it back on when clicked.
 
 Browser support: the default build uses WebAssembly JavaScript Promise
 Integration (JSPI) for the menu's threads: Chrome and Edge 137 or later. Other

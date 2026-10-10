@@ -58,6 +58,15 @@ void __web_irq_leave(OSContext* saved[1]);
 void __web_report(const char* fmt, ...);
 void __web_fatal(const char* fmt, ...);
 
+// Restarts the page (reboot) or shows the console as switched off; does not
+// return.
+enum { WEB_POWER_OFF = 0, WEB_POWER_REBOOT = 1 };
+void webjs_power(int mode);
+
+// The console's POWER (1) and RESET (2) buttons, reported to the STM event
+// hook (ios_web.c).
+void __web_console_buttons(u32 buttons);
+
 extern volatile int __web_irq_pending;
 
 // Nonzero while JavaScript calls into the menu (www_web.c): no thread switches.

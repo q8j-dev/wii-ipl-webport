@@ -64,6 +64,7 @@ function saveChanges(db, changes) {
   const tx = db.transaction(STORE, 'readwrite');
   const st = tx.objectStore(STORE);
   for (const [path, node] of changes) st.put(node, path);
+  return new Promise((resolve) => { tx.oncomplete = tx.onerror = tx.onabort = resolve; });
 }
 function dbGet(db, store, key) {
   return new Promise((resolve) => {
@@ -209,6 +210,27 @@ async function boot() {
       for (const b of bytes) {
         if (b === 10) { console.log(lineBuf); lineBuf = ''; } else lineBuf += String.fromCharCode(b);
       }
+    },
+    // The menu restarts itself (Return to the Wii Menu, settings that need a
+    // restart) or switches the console off. Neither returns.
+    async power(mode) {
+      if (audio.ctx) audio.ctx.suspend();
+      if (db) {
+        clearTimeout(saveTimer);
+        saveTimer = 0;
+        const changes = nand.takeChanges();
+        if (changes.length) await saveChanges(db, changes);
+      }
+      if (mode === 1) {
+        setStatus('');
+        location.reload();
+      } else {
+        canvas.style.visibility = 'hidden';
+        setStatus('The Wii is off. Click to turn it on.');
+        document.addEventListener('pointerdown', () => location.reload(), {once: true});
+        document.addEventListener('keydown', () => location.reload(), {once: true});
+      }
+      return new Promise(() => {});
     },
     fatal(msg) {
       console.error('FATAL:', msg);

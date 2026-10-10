@@ -525,6 +525,8 @@ static s32 es_ioctlv(s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
             memset(v[0].base, 0, v[0].length);
             return 0;
         case 8:  // LAUNCH_TITLE
+            if (*(u64*)v[0].base == 0x0000000100000002ULL)  // the System Menu: restart it
+                webjs_power(WEB_POWER_REBOOT);
             __web_fatal("Launching title %016llx is not supported in the web port.", *(u64*)v[0].base);
             return -1;
     }
@@ -818,6 +820,15 @@ static s32 do_seek(s32 fd, s32 offset, u32 whence) {
 static s32 stm_ioctl(IosFd* f, s32 cmd, u8* in, u32 inLen, u8* out, u32 outLen) {
     if (out && outLen)
         memset(out, 0, outLen);
+    switch (cmd) {
+        case 0x2001:  // HOT_RESET
+            webjs_power(WEB_POWER_REBOOT);
+            break;
+        case 0x2003:  // SHUTDOWN_TO_SBY
+        case 0x2004:  // SHUTDOWN_TO_IDL
+            webjs_power(WEB_POWER_OFF);
+            break;
+    }
     return 0;
 }
 
@@ -913,10 +924,25 @@ static IOSError complete_async(s32 result, IOSIpcCb cb, void* arg) {
     return IPC_RESULT_MAX;
 }
 
-// The STM event hook never fires (no power/reset button presses).
+// The STM event hook completes when a console button is pressed.
 static int is_event_hook(IOSFd fd) {
     IosFd* f = get_fd(fd);
     return f && f->kind == KIND_STM_EVENT;
+}
+
+static struct {
+    IOSIpcCb cb;
+    void* arg;
+    u32* out;
+} sEventHook;
+
+void __web_console_buttons(u32 buttons) {
+    if (!sEventHook.cb)
+        return;
+    sEventHook.out[0] = (buttons & 1) ? 0x800 : 0x20000;
+    IOSIpcCb cb = sEventHook.cb;
+    sEventHook.cb = NULL;
+    complete_async(0, cb, sEventHook.arg);
 }
 
 IOSError IOS_Open(const char* path, u32 flags) { return do_open(path, flags); }
@@ -941,8 +967,14 @@ IOSError IOS_Ioctl(IOSFd fd, s32 cmd, void* in, u32 inLen, void* out, u32 outLen
     return do_ioctl(fd, cmd, in, inLen, out, outLen);
 }
 IOSError IOS_IoctlAsync(IOSFd fd, s32 cmd, void* in, u32 inLen, void* out, u32 outLen, IOSIpcCb cb, void* arg) {
-    if (is_event_hook(fd))
+    if (is_event_hook(fd)) {
+        if (cmd == 0x1000) {  // REG_STM_EVENT
+            sEventHook.cb = cb;
+            sEventHook.arg = arg;
+            sEventHook.out = (u32*)out;
+        }
         return 0;
+    }
     return complete_async(do_ioctl(fd, cmd, in, inLen, out, outLen), cb, arg);
 }
 IOSError IOS_Ioctlv(IOSFd fd, s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) { return do_ioctlv(fd, cmd, nIn, nOut, v); }

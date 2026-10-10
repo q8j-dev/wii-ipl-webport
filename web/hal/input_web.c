@@ -20,6 +20,7 @@ typedef struct WebPadState {
     f32 y;
     u32 pointerValid;
     u32 connected;
+    u32 console;  // console buttons pressed since the last poll: 1 POWER, 2 RESET
 } WebPadState;
 
 static WebPadState sState;
@@ -64,6 +65,8 @@ s32 KPADRead(s32 chan, KPADStatus* status, u32 length) {
         return 0;
     }
     webjs_input_poll(&sState);
+    if (sState.console)
+        __web_console_buttons(sState.console);
     u32 b = sState.buttons;
     memset(status, 0, sizeof(*status));
     status->hold = b;
@@ -119,9 +122,13 @@ static u8 sDpdSensitivity = 3;
 static BOOL sMotorEnabled = TRUE;
 static u32 sDataFormat[4];
 
-void WPADInit(void) {}
-void WPADShutdown(void) {}
-s32 WPADGetStatus(void) { return 3; }  // WPAD_STATE_SETUP
+// 3 (set up) while running; 0 once the remotes were disconnected for a
+// reset or shutdown, which the menu waits for before rebooting.
+static s32 sWpadStatus = 3;
+
+void WPADInit(void) { sWpadStatus = 3; }
+void WPADShutdown(void) { sWpadStatus = 0; }
+s32 WPADGetStatus(void) { return sWpadStatus; }
 void WPADRegisterAllocator(WPADAllocFunc a, WPADFreeFunc f) {
     sAlloc = a;
     sFree = f;
@@ -269,7 +276,10 @@ BOOL WPADStopSimpleSync(void) { return FALSE; }
 BOOL WPADStartClearDevice(void) { return FALSE; }
 WPADSyncDeviceCallback WPADSetSimpleSyncCallback(WPADSyncDeviceCallback cb) { return NULL; }
 WPADClearDeviceCallback WPADSetClearDeviceCallback(WPADClearDeviceCallback cb) { return NULL; }
-void __WPADReconnect(BOOL exec) {}
+void __WPADReconnect(BOOL exec) {
+    if (exec)
+        sWpadStatus = 0;
+}
 
 // ---- PAD (GameCube controllers) ----
 

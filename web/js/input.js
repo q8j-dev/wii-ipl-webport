@@ -27,6 +27,8 @@ export class Input {
     this.keyButtons = 0;
     // Remaining polls for which each recently pressed button stays down.
     this.minHold = new Map();
+    // Console buttons pressed since the last poll: 1 POWER, 2 RESET.
+    this.console = 0;
     this.x = 0;
     this.y = 0;
     this.inside = false;
@@ -60,6 +62,8 @@ export class Input {
     canvas.addEventListener('pointerenter', (e) => move(e));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
+      if (!e.repeat && e.code === 'KeyP') this.console |= 1;
+      if (!e.repeat && e.code === 'KeyR') this.console |= 2;
       const b = KEYMAP[e.code];
       if (b) { this.keyButtons |= b; this.press(b); e.preventDefault(); }
     });
@@ -108,6 +112,8 @@ export class Input {
       buttons |= b;
       if (n <= 1) this.minHold.delete(b); else this.minHold.set(b, n - 1);
     }
-    return {buttons, x: this.x, y: this.y, pointerValid: this.inside};
+    const consoleButtons = this.console;
+    this.console = 0;
+    return {buttons, x: this.x, y: this.y, pointerValid: this.inside, console: consoleButtons};
   }
 }
