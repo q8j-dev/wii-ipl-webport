@@ -60,6 +60,9 @@ void __web_fatal(const char* fmt, ...);
 
 extern volatile int __web_irq_pending;
 
+// Nonzero while JavaScript calls into the menu (www_web.c): no thread switches.
+extern int __web_nested_js;
+
 // Deferred "interrupt" work: run fn(arg) at the next interrupt point, in
 // interrupt context (like an IOS reply or a DSP interrupt on hardware).
 void __web_queue_irq(void (*fn)(void*), void* arg);

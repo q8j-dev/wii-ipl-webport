@@ -185,7 +185,7 @@ static void deliver(int idle) {
         any = 1;
     }
 
-    if (any && !idle)
+    if (any && !idle && !__web_nested_js)
         __OSReschedule();
 }
 
@@ -219,7 +219,7 @@ void __web_poll(int idle) {
     } else {
         // A thread that never blocks must still let frames happen.
         double late = webjs_now() - __web_vi_next_retrace();
-        if (late > 50.0) {
+        if (late > 50.0 && !__web_nested_js) {
             webjs_wait(0, 1, 1e9);
             deliver(0);
         }

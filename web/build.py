@@ -209,7 +209,7 @@ def main():
         "-sTABLE_BASE=65536",  # see FixPmfPass in web/tools/beswap
         "-sENVIRONMENT=web,node",
         "-sEXPORTED_RUNTIME_METHODS=['HEAPU8','callMain']",
-        "-sEXPORTED_FUNCTIONS=['_main','_webx_gx_token','_webx_hwreg','_webx_thread_entry']",
+        "-sEXPORTED_FUNCTIONS=['_main','_webx_gx_token','_webx_hwreg','_webx_thread_entry','_webx_www_getset','_webx_www_call','_webx_www_notify','_webx_www_malloc','_webx_www_free']",
         "-sEXIT_RUNTIME=0",
         "-sERROR_ON_UNDEFINED_SYMBOLS=1",
         "-sINVOKE_RUN=0",

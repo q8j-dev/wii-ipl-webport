@@ -5,6 +5,7 @@ import {Nand} from './nand.js';
 import {Gpu} from './gpu.js';
 import {Input} from './input.js';
 import {Audio} from './audio.js';
+import {Www} from './www.js';
 
 const status = document.getElementById('status');
 const canvas = document.getElementById('screen');
@@ -82,6 +83,7 @@ async function boot() {
 
   const input = new Input(canvas);
   const audio = new Audio();
+  const www = new Www();
   window.addEventListener('pointerdown', () => audio.resume(), {once: false});
   window.addEventListener('keydown', () => audio.resume(), {once: false});
 
@@ -94,6 +96,7 @@ async function boot() {
     nand,
     input,
     audio,
+    www,
     get gpu() { return gpu; },
     log(bytes) {
       for (const b of bytes) {
@@ -125,6 +128,7 @@ async function boot() {
   const {default: createWii} = await import(jspi ? '../build/wiimenu.js' : '../build/wiimenu-asyncify.js');
   mod = await createWii({wii, locateFile: (p) => 'build/' + p});
   audio.attach(mod);
+  www.attach(mod);
   gpu = new Gpu(gl, {
     heap: () => mod.HEAPU8,
     hwregBase: mod._webx_hwreg(),

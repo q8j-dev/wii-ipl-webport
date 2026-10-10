@@ -126,6 +126,20 @@ namespace ext_ead {
             }
         }
 
+#ifdef RVL_WEB
+        // The browser is provided by the web build (web/hal/www_web.c) instead
+        // of the RSO module.
+        extern "C" u32 __web_www_lookup(const char* name);
+
+        void SurfaceManager::ResolveRsoModule() {
+            for (int i = 0; i < ARRAY_LENGTH(RsoExports); i++) {
+                *RsoExports[i].symbol_ptr = __web_www_lookup(RsoExports[i].symbol_name);
+            }
+        }
+
+        void SurfaceManager::UnresolveRsoModule() {
+        }
+#else
         void SurfaceManager::ResolveRsoModule() {
             int i;
             RSOExportFuncTable* symRef;
@@ -171,6 +185,7 @@ namespace ext_ead {
                 Heap::freeMem1(mpRSOBss);
             }
         }
+#endif
 
         SurfaceManager::SurfaceManager()
             : mWidth(VI_MAX_WIDTH_FRAMEBUFFER), mHeight(VI_MAX_HEIGHT_FRAMEBUFFER), mReserved(0), mpBrowserThread(NULL), mpOperaThreadStack(NULL),

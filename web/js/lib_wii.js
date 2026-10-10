@@ -146,6 +146,26 @@ addToLibrary({
     dv.setUint32(ptr + 16, 1, false);
   },
 
+  // ---- Wii Settings browser (web/js/www.js) ----
+  webjs_www_surface: (w, h, rowSize, raster) => Module.wii.www.surface(w, h, rowSize, raster),
+  webjs_www_create_browser: () => { Module.wii.www.createBrowser(); return 1; },
+  webjs_www_terminate: () => Module.wii.www.terminate(),
+  webjs_www_create_window: () => Module.wii.www.createWindow(),
+  webjs_www_close_window: () => Module.wii.www.closeWindow(),
+  webjs_www_set_rect: (x, y, w, h) => Module.wii.www.setRect(x, y, w, h),
+  webjs_www_open: (url) => Module.wii.www.open(url),
+  webjs_www_back: () => Module.wii.www.back(),
+  webjs_www_run_slice: () => Module.wii.www.runSlice(),
+  webjs_www_take_frame: () => Module.wii.www.takeFrame(),
+  webjs_www_mouse: (cmd, x, y, button) => Module.wii.www.mouse(cmd, x, y, button),
+  webjs_www_key: (cmd, sym) => Module.wii.www.key(cmd, sym),
+  webjs_www_commit_ime: (id, text) => Module.wii.www.commitIme(id, text),
+  webjs_www_add_plugin: (cap) => Module.wii.www.addPlugin(cap),
+  webjs_www_protocol_write: (req, data, len) => Module.wii.www.protocolWrite(req, data, len),
+  webjs_www_protocol_done: (req, ok) => Module.wii.www.protocolDone(req, ok),
+  webjs_www_make_function: (call, construct) => Module.wii.www.makeFunction(call, construct),
+  webjs_www_make_object: (priv, getter, setter) => Module.wii.www.makeObject(priv, getter, setter),
+
   // ---- audio ----
   webjs_audio_push: (ptr, frames) => Module.wii.audio.push(ptr, frames),
   webjs_audio_queued: () => Module.wii.audio.queued(),

@@ -138,6 +138,8 @@ void __web_switch_thread(OSThread* to) {
     if (target == sRunning)
         return;
 
+    if (__web_nested_js)
+        __web_fatal("thread switch inside a JavaScript callback");
     WebThread* from = sRunning;
     OSThread* fromThread = from->thread;
     if (fromThread && (fromThread->state == OS_THREAD_STATE_DEAD || fromThread->state == OS_THREAD_STATE_UNINITIALIZED) &&
