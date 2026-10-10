@@ -72,6 +72,12 @@ namespace nw4r {
 
         private:
             CharStrmReader::ReadFunc mReaderFunc;  // 0x04
+#ifdef RVL_WEB
+            // MWCC's member function pointers are 12 bytes, clang's 8. Code
+            // that reserves raw storage for classes holding a font (the
+            // keyboard's input forms) counts on the 0x10-byte Font.
+            u32 mWebPmfPad;
+#endif
         };
     }  // namespace ut
 }  // namespace nw4r

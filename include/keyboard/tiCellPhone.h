@@ -105,7 +105,13 @@ namespace textinput {
                 wchar_t convertToZiCellphoneInput_(wchar_t value);
 #endif
 #else
+#ifdef RVL_WEB
+                // vt_0x08 is the destructor, which takes two vtable slots
+                // under clang's ABI and one under MWCC's.
+                virtual ~Base();
+#else
                 virtual void vt_0x08();
+#endif
                 virtual void vt_0x0C();
                 virtual void vt_0x10();
                 virtual void vt_0x14();
