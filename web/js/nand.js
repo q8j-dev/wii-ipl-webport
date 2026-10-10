@@ -168,6 +168,11 @@ export class Nand {
     return [...(this.children.get(path) || [])].sort();
   }
 
+  // IOS empties /tmp when it starts.
+  clearTmp() {
+    for (const name of this.readdir('/tmp') || []) this.remove('/tmp/' + name);
+  }
+
   // ---- persistence ----
 
   // Returns the changed entries since the last call: [path, node|null].
