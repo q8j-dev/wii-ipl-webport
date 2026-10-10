@@ -20,6 +20,9 @@ export class Input {
     this.canvas = canvas;
     this.mouseButtons = 0;
     this.keyButtons = 0;
+    // Buttons pressed since the last poll: a press shorter than a frame is
+    // still seen.
+    this.latched = 0;
     this.x = 0;
     this.y = 0;
     this.inside = false;
@@ -41,6 +44,7 @@ export class Input {
       if (e.button === 0) this.mouseButtons |= BTN.A;
       if (e.button === 2) this.mouseButtons |= BTN.B;
       if (e.button === 1) this.mouseButtons |= BTN.HOME;
+      this.latched |= this.mouseButtons;
       e.preventDefault();
     });
     canvas.addEventListener('pointerup', (e) => {
@@ -53,7 +57,7 @@ export class Input {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
       const b = KEYMAP[e.code];
-      if (b) { this.keyButtons |= b; e.preventDefault(); }
+      if (b) { this.keyButtons |= b; this.latched |= b; e.preventDefault(); }
     });
     window.addEventListener('keyup', (e) => {
       const b = KEYMAP[e.code];
@@ -91,7 +95,8 @@ export class Input {
   }
 
   state() {
-    const buttons = this.mouseButtons | this.keyButtons | this.gamepadButtons();
+    const buttons = this.mouseButtons | this.keyButtons | this.latched | this.gamepadButtons();
+    this.latched = 0;
     return {buttons, x: this.x, y: this.y, pointerValid: this.inside};
   }
 }
