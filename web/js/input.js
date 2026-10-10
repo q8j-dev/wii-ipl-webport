@@ -1,8 +1,7 @@
 // Mouse / keyboard / gamepad -> Wii Remote on channel 0.
 //
 // Pointer: the canvas shows the 16:9 picture, whose horizontal extent is the
-// System Menu's wide projection (+-416 x +-228); KPAD positions are in units
-// of 1.2 * half the screen height (see KPADGetProjectionPos).
+// The pointer is reported as a normalized screen position (see input_web.c).
 
 const BTN = {
   LEFT: 0x0001, RIGHT: 0x0002, DOWN: 0x0004, UP: 0x0008, PLUS: 0x0010,
@@ -25,12 +24,13 @@ export class Input {
     this.y = 0;
     this.inside = false;
     this.lastMove = 0;
-    const unit = 1.2 * 228;
     const move = (e) => {
       const r = canvas.getBoundingClientRect();
       const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
-      this.x = (u * 2 - 1) * 416 / unit;
-      this.y = (v * 2 - 1) * 228 / unit;
+      // Normalized screen position in [-1, 1]; input_web.c converts it to
+      // KPAD units for the current aspect ratio.
+      this.x = u * 2 - 1;
+      this.y = v * 2 - 1;
       this.inside = u >= 0 && u <= 1 && v >= 0 && v <= 1;
       this.lastMove = performance.now();
     };
@@ -82,8 +82,8 @@ export class Input {
       // left stick moves the pointer
       const ax = p.axes[0] || 0, ay = p.axes[1] || 0;
       if (Math.abs(ax) > 0.15 || Math.abs(ay) > 0.15) {
-        this.x = Math.max(-1.6, Math.min(1.6, this.x + ax * 0.03));
-        this.y = Math.max(-1.0, Math.min(1.0, this.y + ay * 0.03));
+        this.x = Math.max(-1, Math.min(1, this.x + ax * 0.02));
+        this.y = Math.max(-1, Math.min(1, this.y + ay * 0.03));
         this.inside = true;
       }
     }

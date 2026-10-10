@@ -105,9 +105,16 @@ async function boot() {
       setStatus(msg);
       document.body.classList.add('halted');
     },
-    wait(ms, forFrame) {
+    wait(ms, forFrame, limitMs) {
       wii.waits = (wii.waits || 0) + 1;
-      if (forFrame) return new Promise((r) => requestAnimationFrame(() => r()));
+      if (forFrame) {
+        return new Promise((r) => {
+          let done = false;
+          const fin = () => { if (!done) { done = true; r(); } };
+          requestAnimationFrame(fin);
+          if (limitMs < 1e8) setTimeout(fin, Math.max(0, limitMs));
+        });
+      }
       return new Promise((r) => setTimeout(r, Math.max(0, ms)));
     },
   };
@@ -139,8 +146,11 @@ async function boot() {
   setStatus('');
   window.wii = {mod, gpu, nand, host: wii};
   gpu.noDraw = params.has('nodraw');
+  audio.debug = params.has('heartbeat');
+  gpu.debugShaders = params.has('heartbeat');
+  window.wii.audio = audio;
   if (params.has('heartbeat')) {
-    setInterval(() => console.log(`heartbeat waits=${wii.waits} frames=${gpu.frameCount} draws=${gpu.stats.draws}`), 1000);
+    setInterval(() => console.log(`heartbeat waits=${wii.waits} frames=${gpu.frameCount} draws=${gpu.stats.draws} audio=${JSON.stringify(audio.stats)} ctx=${audio.ctx && audio.ctx.state}`), 1000);
   }
   const crashed = (e) => {
     if (String(e).includes('unwind')) return;

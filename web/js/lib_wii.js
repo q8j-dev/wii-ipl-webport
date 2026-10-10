@@ -34,7 +34,7 @@ addToLibrary({
   },
 
   webjs_wait__async: true,
-  webjs_wait: (ms, forFrame) => Asyncify.handleAsync(() => Module.wii.wait(ms, forFrame)),
+  webjs_wait: (ms, forFrame, limitMs) => Asyncify.handleAsync(() => Module.wii.wait(ms, forFrame, limitMs)),
 
   // ---- threads (JSPI) ----
   webjs_jspi: () => {

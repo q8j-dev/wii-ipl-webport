@@ -7,6 +7,7 @@
 #include "web.h"
 
 #include <revolution/kpad.h>
+#include <revolution/sc.h>
 #include <revolution/pad.h>
 #include <revolution/wpad.h>
 
@@ -15,7 +16,7 @@
 // Written by webjs_input_poll (big-endian, like all memory).
 typedef struct WebPadState {
     u32 buttons;  // WPAD core button bits
-    f32 x;        // pointer, KPAD units
+    f32 x;        // pointer, normalized screen position in [-1, 1]
     f32 y;
     u32 pointerValid;
     u32 connected;
@@ -83,15 +84,21 @@ s32 KPADRead(s32 chan, KPADStatus* status, u32 length) {
     status->dist = 2.0f;
 
     if (sDpdEnabled && sState.pointerValid) {
-        status->pos.x = sState.x;
-        status->pos.y = sState.y;
-        status->vec.x = sState.x - sPrevX;
-        status->vec.y = sState.y - sPrevY;
+        // Inverse of the System Menu's projection (KPADGetProjectionPos with
+        // scale 1.10132, then x1.15 in 16:9) onto its 832x456 (608x456) screen.
+        int wide = SCGetAspectRatio() == SC_ASPECT_RATIO_16x9;
+        f32 k = 228.0f * 1.2f * (wide ? 1.15f : 1.0f);
+        f32 x = sState.x * (wide ? 416.0f : 304.0f) / (k * (f32)(0.908 * 1.10132003));
+        f32 y = sState.y * 228.0f / k;
+        status->pos.x = x;
+        status->pos.y = y;
+        status->vec.x = x - sPrevX;
+        status->vec.y = y - sPrevY;
         f32 dx = status->vec.x, dy = status->vec.y;
         status->speed = __builtin_sqrtf(dx * dx + dy * dy);
         status->dpd_valid_fg = 2;
-        sPrevX = sState.x;
-        sPrevY = sState.y;
+        sPrevX = x;
+        sPrevY = y;
     } else {
         status->pos.x = sPrevX;
         status->pos.y = sPrevY;

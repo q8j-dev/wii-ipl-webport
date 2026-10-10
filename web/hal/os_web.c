@@ -167,6 +167,15 @@ static void deliver(int idle) {
         any = 1;
     }
 
+    // Audio interface DMA (drives the AX mixer).
+    if (now >= __web_ai_next()) {
+        OSContext* saved[1];
+        __web_irq_enter(saved);
+        if (__web_ai_interrupt(now))
+            any = 1;
+        __web_irq_leave(saved);
+    }
+
     // Video retrace.
     if (now >= __web_vi_next_retrace()) {
         OSContext* saved[1];
@@ -196,16 +205,22 @@ void __web_poll(int idle) {
         double next = __web_vi_next_retrace();
         if (sDecArmed && sDecDeadline < next)
             next = sDecDeadline;
+        // Timers other than the retrace end a wait for the next frame early.
+        double other = __web_ai_next();
+        if (sDecArmed && sDecDeadline < other)
+            other = sDecDeadline;
+        if (other < next)
+            next = other;
         if (!__web_irq_pending && next > now) {
             int forFrame = next == __web_vi_next_retrace();
-            webjs_wait(next - now, forFrame);
+            webjs_wait(next - now, forFrame, other - now);
         }
         deliver(1);
     } else {
         // A thread that never blocks must still let frames happen.
         double late = webjs_now() - __web_vi_next_retrace();
         if (late > 50.0) {
-            webjs_wait(0, 1);
+            webjs_wait(0, 1, 1e9);
             deliver(0);
         }
     }

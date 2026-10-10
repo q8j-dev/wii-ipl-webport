@@ -18,7 +18,9 @@ extern "C" {
 // ---- JavaScript imports ----
 double webjs_now(void);                          // milliseconds, monotonic
 void webjs_log(const char* text, u32 len);       // console output
-void webjs_wait(double ms, int forFrame);        // async: yields to the browser
+// async: yields to the browser for `ms`, or until the next animation frame
+// (forFrame) but at most `limitMs`
+void webjs_wait(double ms, int forFrame, double limitMs);
 void webjs_fatal(const char* text, u32 len);     // stops the program
 double webjs_now_wall_local(void);               // ms since 1970, local time
 
@@ -61,6 +63,11 @@ extern volatile int __web_irq_pending;
 // Deferred "interrupt" work: run fn(arg) at the next interrupt point, in
 // interrupt context (like an IOS reply or a DSP interrupt on hardware).
 void __web_queue_irq(void (*fn)(void*), void* arg);
+
+// Audio interface (ax_web.c): time of the next due DMA period, and the
+// interrupt that runs due periods (returns how many ran).
+double __web_ai_next(void);
+int __web_ai_interrupt(double now);
 
 // Called by the VI emulation once per retrace from __web_poll.
 void __web_vi_retrace(void);

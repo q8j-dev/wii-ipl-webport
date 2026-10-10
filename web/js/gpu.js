@@ -62,6 +62,7 @@ export class Gpu {
     this.xfbs = new Map();  // addr -> {tex, w, h}
     this.programs = new Map();
     this.stats = {draws: 0, verts: 0};
+    this.fstats = {draws: 0, tex: 0, texPix: 0, copies: 0, copyPix: 0, xfb: 0, clears: 0};
 
     this.initGL();
     this.resetState();
@@ -679,6 +680,7 @@ export class Gpu {
     gl.bindVertexArray(null);
     if (this.trace > 0) { this.trace--; this.traceDraw(); }
     this.stats.draws++;
+    this.fstats.draws++;
     this.stats.verts += this.vtxCount;
     this.indexCount = 0;
     this.vtxCount = 0;
@@ -831,8 +833,20 @@ export class Gpu {
     [this.keyA, this.keyB] = [this.keyB, this.keyA];
     let s = this.programs.get(key);
     if (!s) {
-      const src = buildShaders(this.shaderConfig());
+      let tf = performance.now();
+      if (this.debugShaders) { this.gl.finish(); tf = performance.now() - tf; }
+      const t0 = performance.now();
+      const cfg = this.shaderConfig();
+      const src = buildShaders(cfg);
       const prog = this.makeProgram(src.vs, src.fs);
+      this.compileCount = (this.compileCount || 0) + 1;
+      this.canon = this.canon || new Set();
+      this.canon.add(JSON.stringify(cfg));
+      if (this.debugShaders) {
+        const ms = performance.now() - t0;
+        console.log(`shader #${this.compileCount} (${this.canon.size} distinct configs) finish ${tf.toFixed(1)} ms, compile ${ms.toFixed(1)} ms`);
+        if (ms > 400) (this.slowShaders = this.slowShaders || []).push({ms, cfg, vs: src.vs, fs: src.fs});
+      }
       s = {prog, uni: {}};
       const gl = this.gl;
       const bi = gl.getUniformBlockIndex(prog, 'Gx');
@@ -993,6 +1007,8 @@ export class Gpu {
       const bytes = textureSize(fmt, lw, lh);
       const rgba = decodeTexture(heap.subarray(off, off + bytes), fmt, lw, lh, tlut, tlutFmt);
       gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, lw, lh, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+      this.fstats.tex++;
+      this.fstats.texPix += lw * lh;
       off += bytes;
       size += bytes;
       if (lw === 1 && lh === 1) break;
@@ -1060,11 +1076,14 @@ export class Gpu {
       gl.clearDepth((bp[0x51] & 0xFFFFFF) / 16777215);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.colorMask(true, true, true, true);
+      this.fstats.clears++;
     }
   }
 
   copyToTexture(map, addr, x, y, w, h, tw, th, mode, fmt) {
     const gl = this.gl, s = this.scale;
+    this.fstats.copies++;
+    this.fstats.copyPix += tw * th;
     let ent = map.get(addr);
     if (!ent || ent.w !== tw || ent.h !== th) {
       if (ent) gl.deleteTexture(ent.tex);
@@ -1107,6 +1126,11 @@ export class Gpu {
 
   present(xfb, width, height, black) {
     const gl = this.gl;
+    if (this.debugShaders) {
+      const f = this.fstats;
+      if (f.tex > 4 || f.copies > 3 || f.draws > 400) console.log('FRAME ' + JSON.stringify(f));
+      for (const k in f) f[k] = 0;
+    }
     const canvas = gl.canvas;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
