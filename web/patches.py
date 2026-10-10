@@ -116,3 +116,48 @@ void bg::Base::create(MEMAllocator*) {}
 namespace memo {"""),
     ],
 }
+
+
+# Functions the decompilation defines as void whose callers use the result:
+# MWCC left the error code in r3 on return. Make them return it.
+def _return_value(path, names, var, rtype, wrap_call=None):
+    import os
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path), encoding="latin-1").read()
+    out = []
+    for name in names:
+        start = src.index(f"\nvoid {name}(") + 1
+        end = src.index("\n}\n", start) + 3
+        old = src[start:end]
+        body = old.replace("void ", f"{rtype} ", 1)
+        if wrap_call:
+            body = body.replace(f"    {wrap_call}", f"    return {wrap_call}")
+        else:
+            body = body.replace("return;", f"return {var};")
+            body = body[:-3] + f"\n    return {var};\n}}\n"
+        out.append((old, body))
+    return out
+
+
+PATCHES["libs/RVL_SDK/src/fa/pf_dir.c"] = _return_value(
+    "libs/RVL_SDK/src/fa/pf_dir.c",
+    ["PFDIR_" + n for n in ("rmdir", "rename", "move", "mkdir", "fstat", "fsnext", "fsfirst", "fsexec",
+                           "createdir", "chmod", "chdmod")],
+    "error", "pf_s32")
+PATCHES["libs/RVL_SDK/src/fa/pf_volume.c"] = _return_value(
+    "libs/RVL_SDK/src/fa/pf_volume.c", ["PFVOL_setvol", "PFVOL_settailbuf"], "error", "s32")
+PATCHES["libs/RevoEX/src/cdb/CDBFileSystem.c"] = _return_value(
+    "libs/RevoEX/src/cdb/CDBFileSystem.c", ["CDBFSDeleteDir"], None, "CDBErr", wrap_call="CDBFSDeleteDir")
+PATCHES["libs/RVLMiddleware/eZiText/src/clib/zi8cinfo.c"] = [
+    ("    Zi8GetCharInfo2(ch,output,outputSize,mode,0,0,work);\n    return;",
+     "    return Zi8GetCharInfo2(ch,output,outputSize,mode,0,0,work);"),
+    ("void Zi8GetCharInfo(ziWChar ch,", "ziU8 Zi8GetCharInfo(ziWChar ch,"),
+]
+PATCHES["libs/RVLMiddleware/eZiText/src/clib/zi8dawg.c"] = [
+    ("void Zi8SyllablesROMdata(", "ziU8 Zi8SyllablesROMdata("),
+    ("""  Zi8MatchROMdata0(elements,count,language & 0xff,output,capacity,1,status,graphTable,keyTable,0,prefixLength,
+                   &ZI_WORK->dawgCtx,ZI_WORK->dawgSearchState,ZI_WORK);
+  return;
+}""", """  return Zi8MatchROMdata0(elements,count,language & 0xff,output,capacity,1,status,graphTable,keyTable,0,prefixLength,
+                   &ZI_WORK->dawgCtx,ZI_WORK->dawgSearchState,ZI_WORK);
+}"""),
+]

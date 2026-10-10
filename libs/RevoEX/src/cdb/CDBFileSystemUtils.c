@@ -9,7 +9,12 @@
 char CDBFSPathSeparator = '/';
 
 void CDBFSConcatenatePath(char* path, const char* concatPath) {
+#ifdef RVL_WEB
+    // The separator is a single char; MWCC's data layout puts a zero after it.
+    strcat(path, "/");
+#else
     strcat(path, &CDBFSPathSeparator);
+#endif
     strcat(path, concatPath);
 }
 

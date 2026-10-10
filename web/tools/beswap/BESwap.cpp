@@ -1007,12 +1007,12 @@ struct BEFixPass : PassInfoMixin<BEFixPass> {
         for (Function& F : M)
             for (Instruction& I : instructions(F))
                 if (auto* CB = dyn_cast<CallBase>(&I))
-                    if (auto* Callee = dyn_cast<Function>(CB->getCalledOperand()->stripPointerCasts()))
+                    if (auto* Callee = dyn_cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases()))
                         if (CB->getFunctionType() != Callee->getFunctionType() && !Callee->isIntrinsic())
                             work.push_back(CB);
         for (CallBase* CB : work) {
             auto* CI = dyn_cast<CallInst>(CB);
-            Function* Callee = cast<Function>(CB->getCalledOperand()->stripPointerCasts());
+            Function* Callee = cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases());
             if (!CI) {
                 errs() << "befix: cannot adapt invoke of " << Callee->getName() << "\n";
                 continue;
@@ -1034,8 +1034,19 @@ struct BEFixPass : PassInfoMixin<BEFixPass> {
             CallInst* NC = B.CreateCall(FT, Callee, args);
             NC->setCallingConv(Callee->getCallingConv());
             if (!CI->getType()->isVoidTy()) {
-                Value* R = FT->getReturnType()->isVoidTy() ? Constant::getNullValue(CI->getType())
-                                                           : convert(B, NC, CI->getType());
+                // MWCC constructors return `this`; clang's return nothing.
+                StringRef CalleeName = Callee->getName();
+                bool isCtor = CalleeName.starts_with("_ZN") && (CalleeName.contains("C1E") || CalleeName.contains("C2E"));
+                Value* R;
+                if (!FT->getReturnType()->isVoidTy())
+                    R = convert(B, NC, CI->getType());
+                else if (isCtor && CI->arg_size() > 0 && CI->getType()->isPointerTy())
+                    R = convert(B, CI->getArgOperand(0), CI->getType());
+                else {
+                    R = Constant::getNullValue(CI->getType());
+                    if (!CI->use_empty())
+                        errs() << "befix: result of void " << CalleeName << " used in " << CB->getFunction()->getName() << "\n";
+                }
                 CI->replaceAllUsesWith(R);
             }
             CI->eraseFromParent();
