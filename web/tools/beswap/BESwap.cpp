@@ -24,6 +24,9 @@
 // Finally the triple/datalayout are switched to wasm32-unknown-emscripten. The
 // two datalayouts agree on every size and alignment used by the code.
 
+#include "llvm/IR/AttributeMask.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -728,6 +731,74 @@ struct Swapper {
     }
 };
 
+// Code that falls off the end of a non-void function (the decompiled sources
+// have a few, matching the original binary) gets an `unreachable` from the C++
+// frontend, which the optimizer turns into traps or worse. On the PowerPC the
+// function simply returned whatever was in r3/f1, which usually is the first
+// argument, so return that (or zero) instead. Must run before any other pass.
+struct FixRetPass : PassInfoMixin<FixRetPass> {
+    PreservedAnalyses run(Module& M, ModuleAnalysisManager&) {
+        bool changed = false;
+        for (Function& F : M) {
+            if (F.isDeclaration() || F.getReturnType()->isVoidTy())
+                continue;
+            Type* RT = F.getReturnType();
+            for (BasicBlock& BB : F) {
+                if (BB.size() != 1 || !isa<UnreachableInst>(BB.front()) || pred_empty(&BB))
+                    continue;
+                Value* V = nullptr;
+                if (F.arg_size() > 0 && F.getArg(0)->getType() == RT)
+                    V = F.getArg(0);
+                else
+                    V = Constant::getNullValue(RT);
+                BB.front().eraseFromParent();
+                ReturnInst::Create(F.getContext(), V, &BB);
+                changed = true;
+                AttributeMask AM;
+                AM.addAttribute(Attribute::NonNull);
+                AM.addAttribute(Attribute::NoUndef);
+                AM.addAttribute(Attribute::Dereferenceable);
+                AM.addAttribute(Attribute::DereferenceableOrNull);
+                AM.addAttribute(Attribute::NoAlias);
+                F.removeRetAttrs(AM);
+            }
+        }
+        return changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+    }
+};
+
+// Member function pointers: the PowerPC (Itanium) C++ ABI marks a virtual
+// member pointer by setting bit 0 of its pointer field (vtable offset + 1),
+// which assumes functions are at even addresses. Wasm function pointers are
+// table indices, so the link places the table at TABLE_BASE (0x10000) and
+// every "is virtual" test also requires the value to be below it (vtable
+// offsets are tiny). Needs the frontend's value names (memptr.isvirtual).
+static const uint32_t kTableBase = 0x10000;
+
+struct FixPmfPass : PassInfoMixin<FixPmfPass> {
+    PreservedAnalyses run(Module& M, ModuleAnalysisManager&) {
+        std::vector<ICmpInst*> work;
+        for (Function& F : M)
+            for (Instruction& I : instructions(F))
+                if (auto* IC = dyn_cast<ICmpInst>(&I))
+                    if (IC->getName().starts_with("memptr.isvirtual"))
+                        work.push_back(IC);
+        for (ICmpInst* IC : work) {
+            auto* A = dyn_cast<BinaryOperator>(IC->getOperand(0));
+            if (!A || A->getOpcode() != Instruction::And) {
+                errs() << "fixpmf: unexpected memptr.isvirtual in " << IC->getFunction()->getName() << "\n";
+                continue;
+            }
+            Value* X = A->getOperand(0);
+            IRBuilder<> B(IC->getNextNode());
+            Value* Small = B.CreateICmpULT(X, ConstantInt::get(X->getType(), kTableBase), "memptr.small");
+            Value* R = B.CreateAnd(IC, Small, "memptr.isvirtual.web");
+            IC->replaceUsesWithIf(R, [&](Use& U) { return U.getUser() != R; });
+        }
+        return work.empty() ? PreservedAnalyses::all() : PreservedAnalyses::none();
+    }
+};
+
 struct BESwapPass : PassInfoMixin<BESwapPass> {
     PreservedAnalyses run(Module& M, ModuleAnalysisManager&) {
         Swapper S(M);
@@ -921,6 +992,14 @@ extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo llvmGetPassPluginInfo() {
     return {LLVM_PLUGIN_API_VERSION, "BESwap", "1.0", [](PassBuilder& PB) {
                 PB.registerPipelineParsingCallback(
                     [](StringRef Name, ModulePassManager& MPM, ArrayRef<PassBuilder::PipelineElement>) {
+                        if (Name == "fixpmf") {
+                            MPM.addPass(FixPmfPass());
+                            return true;
+                        }
+                        if (Name == "fixret") {
+                            MPM.addPass(FixRetPass());
+                            return true;
+                        }
                         if (Name == "beswap") {
                             MPM.addPass(BESwapPass());
                             return true;

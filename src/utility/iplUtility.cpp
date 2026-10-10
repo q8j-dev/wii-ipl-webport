@@ -581,7 +581,13 @@ namespace ipl {
             if (pal->versionNumber != TPL_MAGIC) {
                 return;
             }
+#ifdef RVL_WEB
+            // Pointers are physical addresses on the web: an unbound TPL holds
+            // offsets, which are smaller than the palette's own address.
+            if ((u32)pal->descriptorArray < (u32)pal) {
+#else
             if ((u32)pal->descriptorArray < 0x80000000) {
+#endif
                 if ((u32)pal->descriptorArray >= palSize) {
                     return;
                 }

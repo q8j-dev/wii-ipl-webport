@@ -319,6 +319,7 @@ export class Gpu {
         this.bp[reg] = val;
         return;
     }
+    if (this.traceBp && (reg & 0xF0) >= 0x80 && (reg & 0xF0) <= 0xB0) console.log('BP ' + reg.toString(16) + ' = ' + val.toString(16));
     if (this.bp[reg] !== val) {
       this.flushIfNeeded();
       this.bp[reg] = val;
@@ -633,11 +634,36 @@ export class Gpu {
     const mode = this.batchPrim === PRIM_POINTS ? gl.POINTS : this.batchPrim >= PRIM_LINES ? gl.LINES : gl.TRIANGLES;
     gl.drawElements(mode, this.indexCount, gl.UNSIGNED_INT, 0);
     gl.bindVertexArray(null);
+    if (this.trace > 0) { this.trace--; this.traceDraw(); }
     this.stats.draws++;
     this.stats.verts += this.vtxCount;
     this.indexCount = 0;
     this.vtxCount = 0;
     this.batchKey = null;
+  }
+
+  // Debugging aid: `gpu.trace = n` logs the next n draws.
+  traceDraw() {
+    const c = this.shaderConfig(), vp = this.viewportParams();
+    const v = this.vtxData;
+    const verts = [];
+    for (let i = 0; i < Math.min(this.vtxCount, 4); i++) {
+      const o = i * VSTRIDE;
+      verts.push(`(${v[o].toFixed(1)},${v[o + 1].toFixed(1)},${v[o + 2].toFixed(1)} pn${v[o + 3]} c${v[o + 13].toFixed(2)},${v[o + 16].toFixed(2)} t${v[o + 21].toFixed(2)},${v[o + 22].toFixed(2)})`);
+    }
+    const r = this.xfReg;
+    const fl = (i) => new Float32Array(new Uint32Array([r[i]]).buffer)[0];
+    const texs = [];
+    for (let i = 0; i < 8; i++) {
+      const img0 = this.texReg(i, 0x88), img3 = this.texReg(i, 0x94);
+      if (img3 || i === 0) texs.push(`${i}:${((img3 & 0xFFFFFF) << 5).toString(16)} f${(img0 >> 20) & 15} ${(img0 & 0x3FF) + 1}x${((img0 >> 10) & 0x3FF) + 1}`);
+    }
+    const pn = v[3] | 0;
+    const m = Array.from(this.xfMem.subarray(pn * 4, pn * 4 + 12), (x) => x.toFixed(2)).join(',');
+    console.log(`GX draw prim${this.batchPrim} n${this.vtxCount} idx${this.indexCount} tev${c.numTev} tg${c.texgens.length} ch${c.numChan} ` +
+      `vp(${vp.sx.toFixed(0)},${vp.sy.toFixed(0)},${vp.ox.toFixed(0)},${vp.oy.toFixed(0)}) proj${c.proj}[${[0x20, 0x21, 0x22, 0x23, 0x24, 0x25].map((i) => fl(i).toFixed(4)).join(',')}] ` +
+      `bm${(this.bp[0x41] >>> 0).toString(16)} z${this.bp[0x40].toString(16)} sc${this.bp[0x20].toString(16)}/${this.bp[0x21].toString(16)} ` +
+      `tex[${texs.join(' ')}] mtx[${m}] ${verts.join(' ')} st0 c${c.stages[0].color.toString(16)} a${c.stages[0].alpha.toString(16)}`);
   }
 
   // Render state that is not part of the shader.

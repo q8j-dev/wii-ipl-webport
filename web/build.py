@@ -118,6 +118,8 @@ def main():
         "-fno-delete-null-pointer-checks",
         "-fno-strict-aliasing",
         "-fwrapv",
+        "-fno-strict-return",
+        "-fno-discard-value-names",
         "-fshort-wchar",
         "-fno-common",
         "-femit-all-decls",
@@ -129,6 +131,8 @@ def main():
         "-ffp-contract=off",
         "-fno-strict-aliasing",
         "-fwrapv",
+        "-fno-strict-return",
+        "-fno-discard-value-names",
         "-nostdinc",
         "-nostdinc++",
         "-w",
@@ -145,7 +149,7 @@ def main():
 
     n.rule("becc",
            f"{CLANG} $flags -MD -MF $out.d -emit-llvm -c $in -o $out.ppc.bc && "
-           f"{OPT} -load-pass-plugin=./$plugin -passes='function(sroa,early-cse,instcombine<no-verify-fixpoint>,simplifycfg),beswap' $out.ppc.bc -o $out",
+           f"{OPT} -load-pass-plugin=./$plugin -passes='fixret,fixpmf,function(sroa,early-cse,instcombine<no-verify-fixpoint>,simplifycfg),beswap' $out.ppc.bc -o $out",
            depfile="$out.d", deps="gcc", description="CC $in")
     n.rule("sjis", f"python3 {rel('web/tools/sjis.py')} $sjisflag $in $out", description="SJIS $in")
 
@@ -202,6 +206,7 @@ def main():
         "-sALLOW_MEMORY_GROWTH=1",
         "-sMAXIMUM_MEMORY=1GB",
         "-sSTACK_SIZE=1MB",
+        "-sTABLE_BASE=65536",  # see FixPmfPass in web/tools/beswap
         "-sENVIRONMENT=web,node",
         "-sEXPORTED_RUNTIME_METHODS=['HEAPU8','callMain']",
         "-sEXPORTED_FUNCTIONS=['_main','_webx_gx_token','_webx_hwreg','_webx_thread_entry']",

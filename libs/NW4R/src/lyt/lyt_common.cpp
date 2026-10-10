@@ -234,7 +234,13 @@ namespace nw4r {
 
             void InitGXTexObjFromTPL(GXTexObj* to, TPLPalette* pal, u32 id) {
                 // What does this mean?
+#ifdef RVL_WEB
+                // Pointers are physical addresses on the web: an unbound TPL
+                // holds offsets, which are smaller than the palette's address.
+                if ((u32)pal->descriptorArray < (u32)pal) {
+#else
                 if (pal->descriptorArray < (TPLDescriptor*)0x80000000) {
+#endif
                     TPLBind(pal);
                 }
 

@@ -36,6 +36,7 @@ enum {
     KIND_DI,
     KIND_STM_IMMEDIATE,
     KIND_STM_EVENT,
+    KIND_NCD,
     KIND_STUB,
 };
 
@@ -366,6 +367,9 @@ static s32 open_content(Title* t, u32 index) {
 
 static s32 es_ioctlv(s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
     switch (cmd) {
+        case 69:  // VERIFY_CK_2: succeeds only on consoles with the Korean common key
+            return -1017;
+
         case 7:  // GET_DEVICE_ID
             *(u32*)v[0].base = 0x0403AC68;
             return 0;
@@ -526,6 +530,57 @@ static s32 es_ioctlv(s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
 }
 
 // ---------------------------------------------------------------------------
+// /dev/net/ncd/manage: network configuration. There is no network adapter;
+// the configuration itself is kept where IOS keeps it.
+
+#define NCD_CONFIG_PATH "/shared2/sys/net/02/config.dat"
+
+static s32 ncd_ioctlv(s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
+    static const u8 kMac[6] = {0x00, 0x17, 0xAB, 0x5E, 0xB0, 0x01};
+    u32* result;
+    switch (cmd) {
+        case 1:  // lock wireless driver: [result, id]
+            result = (u32*)v[0].base;
+            result[0] = 0;
+            result[1] = 1;
+            return 0;
+        case 2:  // unlock wireless driver
+            ((u32*)v[1].base)[0] = 0;
+            return 0;
+        case 3:  // get configuration
+        case 5: {  // read configuration back from NAND
+            memset(v[0].base, 0, v[0].length);
+            webjs_fs_read(NCD_CONFIG_PATH, 0, v[0].base, v[0].length);
+            ((u32*)v[1].base)[0] = 0;
+            return 0;
+        }
+        case 4:  // set configuration
+        case 6: {  // write configuration to NAND
+            if (!fs_exists(NCD_CONFIG_PATH))
+                fs_create(NCD_CONFIG_PATH, 0);
+            webjs_fs_write(NCD_CONFIG_PATH, 0, v[0].base, v[0].length, 1);
+            ((u32*)v[1].base)[0] = 0;
+            return 0;
+        }
+        case 7:  // link status: [result, status]; no link
+            result = (u32*)v[0].base;
+            result[0] = 0;
+            result[1] = 1;
+            return 0;
+        case 8:  // wireless MAC address
+            ((u32*)v[0].base)[0] = 0;
+            memcpy(v[1].base, kMac, 6);
+            return 0;
+        default:
+            __web_report("[ios] ncd ioctlv %d (stubbed)", cmd);
+            for (u32 i = nIn; i < nIn + nOut; i++)
+                if (v[i].base)
+                    memset(v[i].base, 0, v[i].length);
+            return 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Request dispatch
 
 static int device_kind(const char* path) {
@@ -539,6 +594,8 @@ static int device_kind(const char* path) {
         return KIND_STM_IMMEDIATE;
     if (strcmp(path, "/dev/stm/eventhook") == 0)
         return KIND_STM_EVENT;
+    if (strcmp(path, "/dev/net/ncd/manage") == 0)
+        return KIND_NCD;
     return KIND_STUB;
 }
 
@@ -551,8 +608,10 @@ static s32 do_open(const char* path, u32 mode) {
         return fd < 0 ? IPC_RESULT_MAX : fd;
     }
     u32 t, size;
-    if (fs_stat(path, &t, &size) != 0)
+    if (fs_stat(path, &t, &size) != 0) {
+        __web_report("[ios] open %s: not found", path);
         return ISFS_NOEXISTS;
+    }
     if (t != 1)
         return ISFS_ACCESS;
     s32 fd = alloc_fd(KIND_FILE, path, mode);
@@ -659,6 +718,8 @@ static s32 do_ioctlv(s32 fd, s32 cmd, u32 nIn, u32 nOut, IOSIoVector* v) {
             return es_ioctlv(cmd, nIn, nOut, v);
         case KIND_DI:
             return __web_di_ioctlv(cmd, nIn, nOut, v);
+        case KIND_NCD:
+            return ncd_ioctlv(cmd, nIn, nOut, v);
         default:
             __web_report("[ios] ioctlv %d on %s (stubbed)", cmd, f->path);
             for (u32 i = nIn; i < nIn + nOut; i++)
