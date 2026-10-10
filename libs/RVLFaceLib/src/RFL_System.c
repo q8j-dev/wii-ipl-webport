@@ -322,6 +322,9 @@ RFLErrcode RFLWaitAsync() {
     volatile RFLErrcode errcode;
     do {
         errcode = RFLGetAsyncStatus();
+#ifdef RVL_WEB
+        __web_poll(0);
+#endif
     } while (errcode == RFLErrcode_Busy);
     return errcode;
 }

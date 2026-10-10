@@ -104,6 +104,7 @@ async function boot() {
       document.body.classList.add('halted');
     },
     wait(ms, forFrame) {
+      wii.waits = (wii.waits || 0) + 1;
       if (forFrame) return new Promise((r) => requestAnimationFrame(() => r()));
       return new Promise((r) => setTimeout(r, Math.max(0, ms)));
     },
@@ -134,7 +135,10 @@ async function boot() {
   };
   document.body.classList.add('running');
   setStatus('');
-  window.wii = {mod, gpu, nand};
+  window.wii = {mod, gpu, nand, host: wii};
+  if (new URLSearchParams(location.search).has('heartbeat')) {
+    setInterval(() => console.log(`heartbeat waits=${wii.waits} frames=${gpu.frameCount} draws=${gpu.stats.draws}`), 1000);
+  }
   const crashed = (e) => {
     if (String(e).includes('unwind')) return;
     console.error(e);
