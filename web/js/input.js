@@ -1,12 +1,17 @@
 // Mouse / keyboard / gamepad -> Wii Remote on channel 0.
 //
-// Pointer: the canvas shows the 16:9 picture, whose horizontal extent is the
 // The pointer is reported as a normalized screen position (see input_web.c).
 
 const BTN = {
   LEFT: 0x0001, RIGHT: 0x0002, DOWN: 0x0004, UP: 0x0008, PLUS: 0x0010,
   TWO: 0x0100, ONE: 0x0200, B: 0x0400, A: 0x0800, MINUS: 0x1000, HOME: 0x8000,
 };
+
+// Every press lasts at least this many polls (frames), like a real button
+// press: some screens act only on a button held for several frames (the
+// message board opens a letter after five), which a quick click or a tap of
+// a key would otherwise not reach.
+const MIN_HOLD_POLLS = 6;
 
 const KEYMAP = {
   ArrowLeft: BTN.LEFT, ArrowRight: BTN.RIGHT, ArrowUp: BTN.UP, ArrowDown: BTN.DOWN,
@@ -20,9 +25,8 @@ export class Input {
     this.canvas = canvas;
     this.mouseButtons = 0;
     this.keyButtons = 0;
-    // Buttons pressed since the last poll: a press shorter than a frame is
-    // still seen.
-    this.latched = 0;
+    // Remaining polls for which each recently pressed button stays down.
+    this.minHold = new Map();
     this.x = 0;
     this.y = 0;
     this.inside = false;
@@ -44,7 +48,7 @@ export class Input {
       if (e.button === 0) this.mouseButtons |= BTN.A;
       if (e.button === 2) this.mouseButtons |= BTN.B;
       if (e.button === 1) this.mouseButtons |= BTN.HOME;
-      this.latched |= this.mouseButtons;
+      this.press(this.mouseButtons);
       e.preventDefault();
     });
     canvas.addEventListener('pointerup', (e) => {
@@ -57,13 +61,17 @@ export class Input {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
       const b = KEYMAP[e.code];
-      if (b) { this.keyButtons |= b; this.latched |= b; e.preventDefault(); }
+      if (b) { this.keyButtons |= b; this.press(b); e.preventDefault(); }
     });
     window.addEventListener('keyup', (e) => {
       const b = KEYMAP[e.code];
       if (b) { this.keyButtons &= ~b; e.preventDefault(); }
     });
     window.addEventListener('blur', () => { this.keyButtons = 0; this.mouseButtons = 0; });
+  }
+
+  press(bits) {
+    for (let b = 1; b <= bits; b <<= 1) if (bits & b) this.minHold.set(b, MIN_HOLD_POLLS);
   }
 
   gamepadButtons() {
@@ -95,8 +103,11 @@ export class Input {
   }
 
   state() {
-    const buttons = this.mouseButtons | this.keyButtons | this.latched | this.gamepadButtons();
-    this.latched = 0;
+    let buttons = this.mouseButtons | this.keyButtons | this.gamepadButtons();
+    for (const [b, n] of this.minHold) {
+      buttons |= b;
+      if (n <= 1) this.minHold.delete(b); else this.minHold.set(b, n - 1);
+    }
     return {buttons, x: this.x, y: this.y, pointerValid: this.inside};
   }
 }

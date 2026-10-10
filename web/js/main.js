@@ -256,7 +256,7 @@ async function boot() {
   };
   document.body.classList.add('running');
   setStatus('');
-  window.wii = {mod, gpu, nand, host: wii};
+  window.wii = {mod, gpu, nand, input, host: wii};
   gpu.noDraw = params.has('nodraw');
   audio.debug = params.has('heartbeat');
   gpu.debugShaders = params.has('heartbeat');
