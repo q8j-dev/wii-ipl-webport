@@ -156,6 +156,14 @@ if (params.has('reset')) {
   history.replaceState(null, '', location.pathname);
 }
 
+// A software WebGL implementation is limited by fill rate: draw at the Wii's
+// own resolution there.
+function softwareGl(gl) {
+  const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const renderer = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  return /swiftshader|llvmpipe|software|microsoft basic render/i.test(renderer);
+}
+
 async function boot() {
   const gl = canvas.getContext('webgl2', {antialias: false, alpha: false, depth: false, stencil: false,
     preserveDrawingBuffer: false, powerPreference: 'high-performance'});
@@ -263,7 +271,8 @@ async function boot() {
     heap: () => mod.HEAPU8,
     hwregBase: mod._webx_hwreg(),
     onToken: (t) => mod._webx_gx_token(t),
-    scale: Number(params.get('scale')) || Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio * canvas.clientHeight / 456))),
+    scale: Number(params.get('scale')) || (softwareGl(gl) ? 1 :
+      Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio * canvas.clientHeight / 456)))),
   });
   const present = gpu.present.bind(gpu);
   gpu.present = (...a) => {

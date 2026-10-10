@@ -56,7 +56,7 @@ fps, while the emulation itself keeps 60 fps (`?nodraw` skips drawing to show
 this).
 
 Query parameters: `scale=N` sets the internal resolution (default: from the
-window size, 640×528 × 1–3), `heartbeat` logs diagnostics to the console,
+window size, 640×528 × 1–3; 1 with software WebGL), `heartbeat` logs diagnostics to the console,
 `asyncify` forces the fallback build, `nodraw` skips all drawing.
 
 ## Building
