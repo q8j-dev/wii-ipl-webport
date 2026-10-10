@@ -231,7 +231,8 @@ async function boot() {
 
   setStatus('Starting…');
   // JSPI (stack switching) where available; the Asyncify build elsewhere.
-  const jspi = typeof WebAssembly.Suspending === 'function' && typeof WebAssembly.promising === 'function';
+  const jspi = typeof WebAssembly.Suspending === 'function' && typeof WebAssembly.promising === 'function' &&
+    !params.has('asyncify');
   const {default: createWii} = await import(jspi ? '../build/wiimenu.js' : '../build/wiimenu-asyncify.js');
   mod = await createWii({wii, locateFile: (p) => 'build/' + p});
   audio.attach(mod);
