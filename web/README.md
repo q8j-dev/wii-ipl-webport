@@ -7,10 +7,11 @@ gain `#ifdef RVL_WEB` blocks, so the matching build is unaffected); what the
 Wii hardware and IOS did is emulated at a high level.
 
 What works: the Health and Safety screen, the channel menu (Disc Channel,
-message board with memos and the address book, SD card menu, Wii button), Data
-Management, Wii Settings (its HTML pages, with settings written back to
-SYSCONF and text entry through the menu's keyboard), the HOME Menu, sound,
-16:9 output. Settings and
+message board: writing, posting and reading memos with the software keyboard,
+the address book; SD card menu, Wii button), Data Management, Wii Settings
+(its HTML pages, with settings written back to SYSCONF and text entry through
+the menu's keyboard), the HOME Menu (including Return to the Wii Menu), the
+console's reset and power buttons, sound, 16:9 output. Settings, memos and
 saved data persist between visits.
 
 Not emulated: discs, SD cards (the slot is empty), USB keyboards, the network
@@ -49,10 +50,14 @@ console off leaves a black page that turns it back on when clicked.
 Browser support: the default build uses WebAssembly JavaScript Promise
 Integration (JSPI) for the menu's threads: Chrome and Edge 137 or later. Other
 browsers load `wiimenu-asyncify.js` (built separately, see below), which is
-larger and slower. WebGL 2 is required.
+larger and slower. WebGL 2 is required, and a hardware-accelerated GPU for
+60 fps: with software WebGL (SwiftShader) the channel menu runs at about 20–25
+fps, while the emulation itself keeps 60 fps (`?nodraw` skips drawing to show
+this).
 
 Query parameters: `scale=N` sets the internal resolution (default: from the
-window size, 640×528 × 1–3), `heartbeat` logs diagnostics to the console.
+window size, 640×528 × 1–3), `heartbeat` logs diagnostics to the console,
+`asyncify` forces the fallback build, `nodraw` skips all drawing.
 
 ## Building
 
@@ -80,8 +85,11 @@ address equals the Wii's physical address. This way code that overlays structs
 on big-endian files, puns colors and words, or uses MSB-first bitfields works
 as written. Further passes repair code clang treats differently from MWCC
 (falling off the end of functions, member function pointers to odd table
-indices, trapping deleting destructors, C library names), and the whole
-program is linked with Emscripten. `patches.py` holds the few source fixups
+indices, trapping deleting destructors, C library names, calls through
+declarations that disagree with the definition), and the whole program is
+linked with Emscripten. Where the decompilation's partial class declarations
+rely on MWCC's ABI (12-byte member function pointers, one vtable slot per
+virtual destructor), `RVL_WEB` blocks restore the MWCC layout. `patches.py` holds the few source fixups
 needed only for clang, applied to copies at build time.
 
 **HLE layer (`hal/`).** Replaces the hardware drivers and IOS:
